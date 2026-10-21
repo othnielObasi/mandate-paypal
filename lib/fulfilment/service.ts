@@ -99,8 +99,8 @@ export class Fulfilment {
     const o = await this.require(orderId);
     const c = this.d.carrier;
     if (!c.simulated || !c.markLost || !c.markDelivered) throw new Error("Simulation is only available with the simulated carrier.");
-    if (event === "lost") c.markLost(o.trackingNumber, this.d.clock());
-    else c.markDelivered(o.trackingNumber, this.d.clock());
+    if (event === "lost") await c.markLost(o.trackingNumber, this.d.clock());
+    else await c.markDelivered(o.trackingNumber, this.d.clock());
   }
 
   async refresh(orderId: string): Promise<OrderRecord> {

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { DisputeChannel, FileOutcome, TrackingChannel } from "../fulfilment/service";
 
 type ToolLike = { execute: (args: never, opts: never) => Promise<unknown> };
@@ -57,10 +58,8 @@ export class ToolkitDisputes implements DisputeChannel {
 /** Simulated channel: files instantly with a fake id. Used without PayPal keys. */
 export class SimulatedDisputes implements DisputeChannel {
   readonly name = "simulated";
-  private seq = 0;
   async file(): Promise<FileOutcome> {
-    this.seq += 1;
-    return { status: "filed", paypalDisputeId: `SIM-PP-D-${String(this.seq).padStart(4, "0")}` };
+    return { status: "filed", paypalDisputeId: `SIM-PP-D-${randomBytes(5).toString("hex").toUpperCase()}` };
   }
   async find() {
     return null;

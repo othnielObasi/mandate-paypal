@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { OrderSpec } from "../gate/canonical";
 import { PaymentError, type CaptureResult, type CreateResult, type PaymentProvider, type ReturnUrls } from "./provider";
 
@@ -20,7 +21,8 @@ export class FakeProvider implements PaymentProvider {
       this.failNext = false;
       throw new PaymentError("Simulated PayPal failure");
     }
-    const id = `SIM-${String(++this.seq).padStart(6, "0")}`;
+    // Unique across restarts, like real PayPal ids: a counter alone would repeat after a restart.
+    const id = `SIM-${randomBytes(5).toString("hex").toUpperCase()}${String(++this.seq).padStart(3, "0")}`;
     if (this.mode === "payer_action") {
       this.orders.set(id, { status: "PAYER_ACTION_REQUIRED" });
       return { paypalOrderId: id, status: "PAYER_ACTION_REQUIRED", approveUrl: `https://mandate.local/simulated-approve?token=${id}` };

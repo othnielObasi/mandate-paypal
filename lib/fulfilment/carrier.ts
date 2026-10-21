@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 export type ShipmentStatus = "LABEL_CREATED" | "IN_TRANSIT" | "DELIVERED" | "LOST";
 
 export interface TrackingEvent {
@@ -18,8 +20,24 @@ export interface Carrier {
   readonly simulated: boolean;
   ship(reference: string, now: Date): Promise<{ trackingNumber: string; expectedBy: string }>;
   track(trackingNumber: string): Promise<Tracking>;
-  markLost?(trackingNumber: string, now: Date): void;
-  markDelivered?(trackingNumber: string, now: Date): void;
+  markLost?(trackingNumber: string, now: Date): Promise<void>;
+  markDelivered?(trackingNumber: string, now: Date): Promise<void>;
+}
+
+export interface ParcelStore {
+  get(trackingNumber: string): Promise<Tracking | undefined>;
+  put(trackingNumber: string, t: Tracking): Promise<void>;
+}
+
+export class MemoryParcelStore implements ParcelStore {
+  private rows = new Map<string, Tracking>();
+  async get(n: string) {
+    const t = this.rows.get(n);
+    return t ? structuredClone(t) : undefined;
+  }
+  async put(n: string, t: Tracking) {
+    this.rows.set(n, structuredClone(t));
+  }
 }
 
 export const DELIVERY_DAYS = 3;
@@ -28,15 +46,14 @@ export const DELIVERY_DAYS = 3;
 export class SimulatedCarrier implements Carrier {
   readonly name = "Simulated carrier";
   readonly simulated = true;
-  private parcels = new Map<string, Tracking>();
-  private seq = 0;
+
+  constructor(private store: ParcelStore = new MemoryParcelStore()) {}
 
   async ship(_reference: string, now: Date) {
-    this.seq += 1;
-    const trackingNumber = `SIM1Z${now.getTime().toString(36).toUpperCase()}${String(this.seq).padStart(4, "0")}`;
+    const trackingNumber = `SIM1Z${now.getTime().toString(36).toUpperCase()}${randomBytes(3).toString("hex").toUpperCase()}`;
     const expectedBy = new Date(now.getTime() + DELIVERY_DAYS * 864e5).toISOString();
     const at = now.toISOString();
-    this.parcels.set(trackingNumber, {
+    await this.store.put(trackingNumber, {
       status: "IN_TRANSIT",
       expectedBy,
       events: [
@@ -48,26 +65,26 @@ export class SimulatedCarrier implements Carrier {
   }
 
   async track(trackingNumber: string): Promise<Tracking> {
-    const p = this.parcels.get(trackingNumber);
-    if (!p) throw new Error(`Unknown tracking number ${trackingNumber}`);
-    return structuredClone(p);
+    return this.get(trackingNumber);
   }
 
-  markLost(trackingNumber: string, now: Date) {
-    const p = this.get(trackingNumber);
+  async markLost(trackingNumber: string, now: Date) {
+    const p = await this.get(trackingNumber);
     if (p.status === "DELIVERED") throw new Error("Parcel already delivered");
     p.status = "LOST";
     p.events.push({ at: now.toISOString(), status: "LOST", note: "Carrier reports parcel lost in transit" });
+    await this.store.put(trackingNumber, p);
   }
 
-  markDelivered(trackingNumber: string, now: Date) {
-    const p = this.get(trackingNumber);
+  async markDelivered(trackingNumber: string, now: Date) {
+    const p = await this.get(trackingNumber);
     p.status = "DELIVERED";
     p.events.push({ at: now.toISOString(), status: "DELIVERED", note: "Delivered" });
+    await this.store.put(trackingNumber, p);
   }
 
-  private get(trackingNumber: string) {
-    const p = this.parcels.get(trackingNumber);
+  private async get(trackingNumber: string) {
+    const p = await this.store.get(trackingNumber);
     if (!p) throw new Error(`Unknown tracking number ${trackingNumber}`);
     return p;
   }

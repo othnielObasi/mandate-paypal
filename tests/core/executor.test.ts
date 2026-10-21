@@ -171,7 +171,7 @@ describe("executor: the only path to PayPal", () => {
     const p = permitFor(order);
     await permits.save(p);
     await ex.pay(p.id, order);
-    expect(ex.pendingMinor("m1")).toBe(450);
-    expect(ex.pendingMinor("m2")).toBe(0);
+    expect(await ex.pendingMinor("m1")).toBe(450);
+    expect(await ex.pendingMinor("m2")).toBe(0);
   });
 });

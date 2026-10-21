@@ -59,6 +59,7 @@ export interface ReceiptStore {
 export class MemoryReceiptStore implements ReceiptStore {
   private rows: Receipt[] = [];
   async append(r: Receipt) {
+    if (this.rows.some((x) => x.seq === r.seq)) throw new Error(`receipt ${r.seq} already exists`);
     this.rows.push(r);
   }
   async last() {

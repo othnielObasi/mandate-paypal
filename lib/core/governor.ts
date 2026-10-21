@@ -75,7 +75,7 @@ export class Governor {
     if (!m) return undefined;
     const now = this.d.clock();
     const spentMinor = await this.d.payments.spentMinor(mandateId, m.policy.budget.period, now);
-    const reservedMinor = (await this.d.permits.reservedMinor(mandateId, now)) + this.d.executor.pendingMinor(mandateId);
+    const reservedMinor = (await this.d.permits.reservedMinor(mandateId, now)) + (await this.d.executor.pendingMinor(mandateId));
     return { mandate: m, spentMinor, reservedMinor, remainingMinor: Math.max(0, m.policy.budget.amountMinor - spentMinor - reservedMinor) };
   }
 
@@ -130,7 +130,7 @@ export class Governor {
       origin: p.origin,
     };
     const spentMinor = await this.d.payments.spentMinor(mandate.id, mandate.policy.budget.period, now);
-    const reservedMinor = (await this.d.permits.reservedMinor(mandate.id, now)) + this.d.executor.pendingMinor(mandate.id);
+    const reservedMinor = (await this.d.permits.reservedMinor(mandate.id, now)) + (await this.d.executor.pendingMinor(mandate.id));
     const decision = evaluate(mandate, intent, { now, spentMinor, reservedMinor, approved });
     const digest = orderDigest(order);
     const money = formatMoney(amountMinor, order.currency);

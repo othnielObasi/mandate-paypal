@@ -4,6 +4,7 @@ import { verifyPermit, type PermitStore } from "../gate/permits";
 import { CURRENCIES, formatMoney } from "../gate/policy";
 import type { ReceiptLog } from "../gate/receipts";
 import type { PaymentProvider, ReturnUrls } from "../paypal/provider";
+import { MemoryPendingStore, type PendingStore } from "./pending";
 import type { PaymentStore } from "./spend";
 
 export const OrderSpecSchema = z.object({
@@ -60,6 +61,8 @@ interface Deps {
   urls: ReturnUrls;
   /** Called after money is captured (e.g. to ship). Failures are contained. */
   onPaid?: (p: PaidOrder) => Promise<void>;
+  /** Orders waiting for buyer approval in PayPal. Defaults to memory. */
+  pending?: PendingStore;
 }
 
 /**
@@ -68,18 +71,18 @@ interface Deps {
  * matches the exact order being paid.
  */
 export class Executor {
-  private pending = new Map<string, { mandateId: string; amountMinor: number; currency: OrderSpec["currency"]; order: OrderSpec; permitId: string }>();
+  private pending: PendingStore;
 
-  constructor(private d: Deps) {}
+  constructor(private d: Deps) {
+    this.pending = d.pending ?? new MemoryPendingStore();
+  }
 
   get providerName() {
     return this.d.provider.name;
   }
 
-  pendingMinor(mandateId: string): number {
-    let sum = 0;
-    for (const p of this.pending.values()) if (p.mandateId === mandateId) sum += p.amountMinor;
-    return sum;
+  pendingMinor(mandateId: string): Promise<number> {
+    return this.pending.sumFor(mandateId);
   }
 
   async pay(permitId: string, orderIn: OrderSpec): Promise<PayResult> {
@@ -108,7 +111,7 @@ export class Executor {
     try {
       const created = await this.d.provider.createOrder(order, this.d.urls);
       if (created.status === "PAYER_ACTION_REQUIRED") {
-        this.pending.set(created.paypalOrderId, { mandateId: order.mandateId, amountMinor: total, currency: order.currency, order, permitId: permit.id });
+        await this.pending.put(created.paypalOrderId, { mandateId: order.mandateId, amountMinor: total, currency: order.currency, order, permitId: permit.id });
         await this.d.receipts.append({
           mandateId: order.mandateId,
           type: "payment_pending",
@@ -135,9 +138,8 @@ export class Executor {
 
   /** Called when the buyer returns from PayPal. Captures only orders this executor created. */
   async completeBuyerApproval(paypalOrderId: string): Promise<PayResult> {
-    const p = this.pending.get(paypalOrderId);
+    const p = await this.pending.claim(paypalOrderId); // atomic: only one caller gets it
     if (!p) return { status: "refused", reason: "unknown_order" };
-    this.pending.delete(paypalOrderId); // claim before any await
     try {
       const captured = await this.d.provider.captureOrder(paypalOrderId);
       await this.settle(p.mandateId, p.amountMinor, p.currency, captured.paypalOrderId, captured.captureId, p.permitId, p.order.merchantId);
@@ -152,9 +154,8 @@ export class Executor {
 
   /** Buyer cancelled in PayPal: release the reservation. */
   async cancelBuyerApproval(paypalOrderId: string): Promise<boolean> {
-    const p = this.pending.get(paypalOrderId);
+    const p = await this.pending.claim(paypalOrderId);
     if (!p) return false;
-    this.pending.delete(paypalOrderId);
     await this.d.receipts.append({ mandateId: p.mandateId, type: "payment_failed", summary: "Buyer cancelled in PayPal", payload: { paypalOrderId } });
     return true;
   }

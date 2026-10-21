@@ -6,5 +6,5 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const c = getContainer();
-  return json({ ok: true, provider: c.providerName, model: c.modelName, signingKey: c.signingKey, sandboxOnly: true });
+  return json({ ok: true, provider: c.providerName, model: c.modelName, signingKey: c.signingKey, storage: c.storage, sandboxOnly: true });
 }

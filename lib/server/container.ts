@@ -2,16 +2,17 @@ import { PayPalAgentToolkit } from "@paypal/agent-toolkit/ai-sdk";
 import { AnthropicClient } from "../agent/anthropic";
 import { OfflinePlanner } from "../agent/offline";
 import type { LlmClient } from "../agent/runtime";
+import { Pool } from "pg";
 import { Executor } from "../core/executor";
 import { Governor } from "../core/governor";
-import { MemoryPaymentStore } from "../core/spend";
-import { MemoryApprovalStore, MemoryMandateStore } from "../core/stores";
+import type { PaymentStore } from "../core/spend";
+import type { ApprovalStore, MandateStore } from "../core/stores";
+import { PgDb, type Sql } from "../db/sql";
+import { memoryStores, pgStores, type Stores } from "../db/stores";
 import { generateSigner, signerFromPem, type Signer } from "../gate/keys";
-import { MemoryPermitStore } from "../gate/permits";
 import { ReceiptLog } from "../gate/receipts";
 import { SimulatedCarrier } from "../fulfilment/carrier";
 import { Fulfilment, type DisputeChannel, type TrackingChannel } from "../fulfilment/service";
-import { MemoryDisputeStore, MemoryOrderStore } from "../fulfilment/stores";
 import { DEMO_CATALOG, Catalog } from "../merchant/catalog";
 import { SimulatedDisputes, ToolkitDisputes, ToolkitTracking } from "../paypal/toolkit-fulfilment";
 import { FakeProvider } from "../paypal/fake-provider";
@@ -25,9 +26,11 @@ export interface Container {
   executor: Executor;
   fulfilment: Fulfilment;
   receipts: ReceiptLog;
-  mandates: MemoryMandateStore;
-  approvals: MemoryApprovalStore;
-  payments: MemoryPaymentStore;
+  mandates: MandateStore;
+  approvals: ApprovalStore;
+  payments: PaymentStore;
+  stores: Stores;
+  storage: "postgres" | "memory";
   catalog: Catalog;
   signer: Signer;
   /** A fresh model client per agent run (the offline planner is stateful). */
@@ -64,21 +67,28 @@ function makePayPal(env: Env): { provider: PaymentProvider; tracking: TrackingCh
   };
 }
 
-export function createContainer(env: Env = process.env): Container {
+function makeSql(env: Env, given?: Sql): Sql | null {
+  if (given) return given;
+  if (!env.DATABASE_URL) return null;
+  return new Pool({ connectionString: env.DATABASE_URL, max: 5 }) as unknown as Sql;
+}
+
+export function createContainer(env: Env = process.env, opts: { sql?: Sql } = {}): Container {
   const appUrl = (env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  const sql = makeSql(env, opts.sql);
+  if (sql && !env.MANDATE_SIGNING_KEY)
+    throw new Error("With a database, set MANDATE_SIGNING_KEY so receipts stay verifiable across restarts (see .env.example).");
   const signer = env.MANDATE_SIGNING_KEY ? signerFromPem(env.MANDATE_SIGNING_KEY.replace(/\\n/g, "\n")) : generateSigner();
   const { provider, tracking, disputes } = makePayPal(env);
   const clock = () => new Date();
 
-  const permits = new MemoryPermitStore();
-  const payments = new MemoryPaymentStore();
-  const receipts = new ReceiptLog(signer, clock);
-  const mandates = new MemoryMandateStore();
-  const approvals = new MemoryApprovalStore();
+  const stores = sql ? pgStores(new PgDb(sql)) : memoryStores();
+  const { permits, payments, mandates, approvals } = stores;
+  const receipts = new ReceiptLog(signer, clock, stores.receipts);
   const fulfilment = new Fulfilment({
-    orders: new MemoryOrderStore(),
-    disputes: new MemoryDisputeStore(),
-    carrier: new SimulatedCarrier(),
+    orders: stores.orders,
+    disputes: stores.disputes,
+    carrier: new SimulatedCarrier(stores.parcels),
     receipts,
     tracking,
     disputeChannel: disputes,
@@ -94,6 +104,7 @@ export function createContainer(env: Env = process.env): Container {
     clock,
     urls: { returnUrl: `${appUrl}/api/paypal/return`, cancelUrl: `${appUrl}/api/paypal/cancel` },
     onPaid: (p) => fulfilment.onPaid(p),
+    pending: stores.pending,
   });
   const governor = new Governor({ mandates, approvals, permits, payments, receipts, executor, signer, clock });
 
@@ -114,9 +125,11 @@ export function createContainer(env: Env = process.env): Container {
     mandates,
     approvals,
     payments,
+    stores,
     catalog: new Catalog(DEMO_CATALOG),
     signer,
     newLlm,
+    storage: sql ? "postgres" : "memory",
     providerName: provider.name,
     modelName: apiKey ? model : "offline-planner",
     signingKey: env.MANDATE_SIGNING_KEY ? "configured" : "ephemeral",
