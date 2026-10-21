@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { createContainer, setContainer } from "@/lib/server/container";
 import { GET as health } from "@/app/api/health/route";
 import { GET as listMandates, POST as createMandate } from "@/app/api/mandates/route";
+import { POST as previewMandate } from "@/app/api/mandates/preview/route";
 import { GET as getMandate, PATCH as patchMandate } from "@/app/api/mandates/[id]/route";
 import { POST as runAgent } from "@/app/api/agent/run/route";
 import { GET as listApprovals } from "@/app/api/approvals/route";
@@ -74,6 +75,29 @@ describe("API: mandates", () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toMatchObject({ status: "active", policy: { maxItemMinor: 2500, budget: { amountMinor: 8000 } } });
     expect(((await (await listMandates()).json()) as unknown[]).length).toBe(1);
+  });
+
+  it("previews the parsed rules without saving anything", async () => {
+    const res = await previewMandate(post("/api/mandates/preview", { text: MANDATE_TEXT }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ policy: { maxItemMinor: 2500, budget: { amountMinor: 8000, period: "month" } } });
+    expect(await (await listMandates()).json()).toEqual([]);
+    expect((await previewMandate(post("/api/mandates/preview", { text: "" }))).status).toBe(422);
+  });
+
+  it("saves the rules exactly as the user edited them", async () => {
+    const preview = (await (await previewMandate(post("/api/mandates/preview", { text: MANDATE_TEXT }))).json()) as { policy: Record<string, unknown> };
+    const edited = { ...preview.policy, maxItemMinor: 4000, categories: ["household", "office"] };
+    const res = await createMandate(post("/api/mandates", { text: MANDATE_TEXT, policy: edited }));
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ policy: { maxItemMinor: 4000, categories: ["household", "office"] } });
+  });
+
+  it("rejects edited rules that break the schema or have expired", async () => {
+    const preview = (await (await previewMandate(post("/api/mandates/preview", { text: MANDATE_TEXT }))).json()) as { policy: Record<string, unknown> };
+    expect((await createMandate(post("/api/mandates", { text: "x", policy: { ...preview.policy, maxItemMinor: 999_999 } }))).status).toBe(422);
+    expect((await createMandate(post("/api/mandates", { text: "x", policy: { ...preview.policy, expires: "2020-01-01" } }))).status).toBe(422);
+    expect((await createMandate(post("/api/mandates", { text: "x", policy: { ...preview.policy, admin: true } }))).status).toBe(422);
   });
 
   it("rejects bad input with 400 and an unusable mandate with 422", async () => {
