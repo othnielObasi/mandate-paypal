@@ -42,6 +42,14 @@ export type PayResult =
         | "unknown_order";
     };
 
+export interface PaidOrder {
+  paypalOrderId: string;
+  captureId: string;
+  order: OrderSpec;
+  amountMinor: number;
+  permitId: string;
+}
+
 interface Deps {
   provider: PaymentProvider;
   permits: PermitStore;
@@ -50,6 +58,8 @@ interface Deps {
   publicKey: string;
   clock: () => Date;
   urls: ReturnUrls;
+  /** Called after money is captured (e.g. to ship). Failures are contained. */
+  onPaid?: (p: PaidOrder) => Promise<void>;
 }
 
 /**
@@ -58,7 +68,7 @@ interface Deps {
  * matches the exact order being paid.
  */
 export class Executor {
-  private pending = new Map<string, { mandateId: string; amountMinor: number; currency: OrderSpec["currency"] }>();
+  private pending = new Map<string, { mandateId: string; amountMinor: number; currency: OrderSpec["currency"]; order: OrderSpec; permitId: string }>();
 
   constructor(private d: Deps) {}
 
@@ -98,7 +108,7 @@ export class Executor {
     try {
       const created = await this.d.provider.createOrder(order, this.d.urls);
       if (created.status === "PAYER_ACTION_REQUIRED") {
-        this.pending.set(created.paypalOrderId, { mandateId: order.mandateId, amountMinor: total, currency: order.currency });
+        this.pending.set(created.paypalOrderId, { mandateId: order.mandateId, amountMinor: total, currency: order.currency, order, permitId: permit.id });
         await this.d.receipts.append({
           mandateId: order.mandateId,
           type: "payment_pending",
@@ -109,6 +119,7 @@ export class Executor {
       }
       const captured = created.status === "COMPLETED" ? created : await this.d.provider.captureOrder(created.paypalOrderId);
       await this.settle(order.mandateId, total, order.currency, captured.paypalOrderId, captured.captureId, permit.id, order.merchantId);
+      await this.handOff({ paypalOrderId: captured.paypalOrderId, captureId: captured.captureId, order, amountMinor: total, permitId: permit.id });
       return { status: "paid", paypalOrderId: captured.paypalOrderId, captureId: captured.captureId, amountMinor: total };
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
@@ -129,7 +140,8 @@ export class Executor {
     this.pending.delete(paypalOrderId); // claim before any await
     try {
       const captured = await this.d.provider.captureOrder(paypalOrderId);
-      await this.settle(p.mandateId, p.amountMinor, p.currency, captured.paypalOrderId, captured.captureId, null, null);
+      await this.settle(p.mandateId, p.amountMinor, p.currency, captured.paypalOrderId, captured.captureId, p.permitId, p.order.merchantId);
+      await this.handOff({ paypalOrderId: captured.paypalOrderId, captureId: captured.captureId, order: p.order, amountMinor: p.amountMinor, permitId: p.permitId });
       return { status: "paid", paypalOrderId, captureId: captured.captureId, amountMinor: p.amountMinor };
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
@@ -145,6 +157,15 @@ export class Executor {
     this.pending.delete(paypalOrderId);
     await this.d.receipts.append({ mandateId: p.mandateId, type: "payment_failed", summary: "Buyer cancelled in PayPal", payload: { paypalOrderId } });
     return true;
+  }
+
+  private async handOff(p: PaidOrder) {
+    if (!this.d.onPaid) return;
+    try {
+      await this.d.onPaid(p);
+    } catch (e) {
+      console.error("onPaid hook failed", e);
+    }
   }
 
   private async settle(

@@ -12,6 +12,10 @@ import { GET as paypalReturn } from "@/app/api/paypal/return/route";
 import { GET as paypalCancel } from "@/app/api/paypal/cancel/route";
 import { GET as catalog } from "@/app/api/catalog/route";
 import { GET as publicKey } from "@/app/api/public-key/route";
+import { GET as listOrders } from "@/app/api/orders/route";
+import { POST as checkOrders } from "@/app/api/orders/check/route";
+import { POST as simulateOrder } from "@/app/api/orders/[id]/simulate/route";
+import { POST as dispute } from "@/app/api/orders/[id]/dispute/route";
 
 const BASE = "http://localhost:3000";
 const post = (path: string, body: unknown) =>
@@ -139,8 +143,8 @@ describe("API: receipts", () => {
     const id = await newMandate();
     await run(id, "Buy washing-up liquid");
     const rs = (await (await listReceipts(get(`/api/receipts?mandateId=${id}`))).json()) as Array<{ type: string }>;
-    expect(rs.map((r) => r.type)).toEqual(["mandate", "decision", "permit", "payment"]);
-    expect(await (await verifyStored()).json()).toMatchObject({ ok: true, count: 4 });
+    expect(rs.map((r) => r.type)).toEqual(["mandate", "decision", "permit", "payment", "tracking"]);
+    expect(await (await verifyStored()).json()).toMatchObject({ ok: true, count: 5 });
   });
 
   it("verifies a copy the client sends, and flags an edited row", async () => {
@@ -150,6 +154,47 @@ describe("API: receipts", () => {
     expect(await (await verifyGiven(post("/api/receipts/verify", { receipts: rs }))).json()).toMatchObject({ ok: true });
     const edited = rs.map((r) => (r.seq === 4 ? { ...r, summary: "Paid $0.01" } : r));
     expect(await (await verifyGiven(post("/api/receipts/verify", { receipts: edited }))).json()).toMatchObject({ ok: false, brokenAt: 4 });
+  });
+});
+
+describe("API: delivery follow-through and disputes", () => {
+  async function paidOrder() {
+    const id = await newMandate();
+    await run(id, "Buy washing-up liquid");
+    const orders = (await (await listOrders(get(`/api/orders?mandateId=${id}`))).json()) as Array<{ id: string; shipmentStatus: string; trackingNumber: string }>;
+    expect(orders).toHaveLength(1);
+    return { mandateId: id, order: orders[0]! };
+  }
+
+  it("ships every paid order with tracking", async () => {
+    const { order } = await paidOrder();
+    expect(order).toMatchObject({ shipmentStatus: "IN_TRANSIT", trackingNumber: expect.stringMatching(/^SIM1Z/) });
+  });
+
+  it("lost parcel → flagged → AI-drafted dispute → filed after you confirm", async () => {
+    const { mandateId, order } = await paidOrder();
+    expect((await simulateOrder(post(`/api/orders/${order.id}/simulate`, { event: "lost" }), params(order.id))).status).toBe(200);
+    const checked = (await (await checkOrders(post(`/api/orders/check`, { mandateId }))).json()) as Array<{ problem: string }>;
+    expect(checked[0]).toMatchObject({ problem: "not_received" });
+
+    const draft = await dispute(post(`/api/orders/${order.id}/dispute`, { action: "draft" }), params(order.id));
+    expect(draft.status).toBe(200);
+    expect(await draft.json()).toMatchObject({ status: "draft", statement: expect.stringContaining(order.id) });
+
+    expect((await dispute(post(`/api/orders/${order.id}/dispute`, { action: "file" }), params(order.id))).status).toBe(400);
+    const filed = await dispute(post(`/api/orders/${order.id}/dispute`, { action: "file", confirm: true }), params(order.id));
+    expect(await filed.json()).toMatchObject({ status: "filed", paypalDisputeId: expect.stringMatching(/^SIM-PP-D-/) });
+    expect((await dispute(post(`/api/orders/${order.id}/dispute`, { action: "file", confirm: true }), params(order.id))).status).toBe(409);
+  });
+
+  it("refuses to draft a dispute for a parcel with no problem", async () => {
+    const { order } = await paidOrder();
+    expect((await dispute(post(`/api/orders/${order.id}/dispute`, { action: "draft" }), params(order.id))).status).toBe(409);
+  });
+
+  it("404s an unknown order", async () => {
+    expect((await simulateOrder(post(`/api/orders/nope/simulate`, { event: "lost" }), params("nope"))).status).toBe(404);
+    expect((await dispute(post(`/api/orders/nope/dispute`, { action: "draft" }), params("nope"))).status).toBe(404);
   });
 });
 

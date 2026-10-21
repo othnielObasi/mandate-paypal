@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Executor } from "@/lib/core/executor";
 import { MemoryPaymentStore } from "@/lib/core/spend";
 import { FakeProvider } from "@/lib/paypal/fake-provider";
@@ -132,6 +132,37 @@ describe("executor: the only path to PayPal", () => {
     expect(await ex.completeBuyerApproval(r.paypalOrderId)).toMatchObject({ status: "paid" });
     expect(await ex.completeBuyerApproval(r.paypalOrderId)).toMatchObject({ status: "refused", reason: "unknown_order" });
     expect(await payments.spentMinor("m1", "month", now)).toBe(450);
+  });
+
+  it("hands a paid order to fulfilment, with the exact items", async () => {
+    const onPaid = vi.fn(async () => undefined);
+    const ex = new Executor({ provider, permits, payments, receipts, publicKey: signer.publicKey, clock: () => now, urls, onPaid });
+    const p = permitFor(order);
+    await permits.save(p);
+    await ex.pay(p.id, order);
+    expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ captureId: expect.any(String), order, amountMinor: 450, permitId: p.id }));
+  });
+
+  it("hands over after buyer approval too", async () => {
+    const onPaid = vi.fn(async () => undefined);
+    const ex = new Executor({ provider: new FakeProvider("payer_action"), permits, payments, receipts, publicKey: signer.publicKey, clock: () => now, urls, onPaid });
+    const p = permitFor(order);
+    await permits.save(p);
+    const r = await ex.pay(p.id, order);
+    if (r.status !== "awaiting_buyer") throw new Error("expected awaiting_buyer");
+    expect(onPaid).not.toHaveBeenCalled();
+    await ex.completeBuyerApproval(r.paypalOrderId);
+    expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ order, amountMinor: 450, permitId: p.id }));
+  });
+
+  it("a fulfilment failure never turns a paid order into a failure", async () => {
+    const onPaid = vi.fn(async () => {
+      throw new Error("carrier down");
+    });
+    const ex = new Executor({ provider, permits, payments, receipts, publicKey: signer.publicKey, clock: () => now, urls, onPaid });
+    const p = permitFor(order);
+    await permits.save(p);
+    expect((await ex.pay(p.id, order)).status).toBe("paid");
   });
 
   it("counts money awaiting buyer approval as reserved", async () => {

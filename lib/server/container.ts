@@ -9,7 +9,11 @@ import { MemoryApprovalStore, MemoryMandateStore } from "../core/stores";
 import { generateSigner, signerFromPem, type Signer } from "../gate/keys";
 import { MemoryPermitStore } from "../gate/permits";
 import { ReceiptLog } from "../gate/receipts";
+import { SimulatedCarrier } from "../fulfilment/carrier";
+import { Fulfilment, type DisputeChannel, type TrackingChannel } from "../fulfilment/service";
+import { MemoryDisputeStore, MemoryOrderStore } from "../fulfilment/stores";
 import { DEMO_CATALOG, Catalog } from "../merchant/catalog";
+import { SimulatedDisputes, ToolkitDisputes, ToolkitTracking } from "../paypal/toolkit-fulfilment";
 import { FakeProvider } from "../paypal/fake-provider";
 import type { PaymentProvider } from "../paypal/provider";
 import { ToolkitProvider, type ToolkitTools } from "../paypal/toolkit-provider";
@@ -19,6 +23,7 @@ export type Env = Record<string, string | undefined>;
 export interface Container {
   governor: Governor;
   executor: Executor;
+  fulfilment: Fulfilment;
   receipts: ReceiptLog;
   mandates: MemoryMandateStore;
   approvals: MemoryApprovalStore;
@@ -33,24 +38,36 @@ export interface Container {
   appUrl: string;
 }
 
-function makeProvider(env: Env): PaymentProvider {
+function makePayPal(env: Env): { provider: PaymentProvider; tracking: TrackingChannel | null; disputes: DisputeChannel } {
   if (env.PAYPAL_CLIENT_ID && env.PAYPAL_CLIENT_SECRET) {
     if ((env.PAYPAL_ENVIRONMENT ?? "SANDBOX").toUpperCase() !== "SANDBOX")
       throw new Error("Mandate runs against the PayPal sandbox only. Set PAYPAL_ENVIRONMENT=SANDBOX.");
     const toolkit = new PayPalAgentToolkit({
       clientId: env.PAYPAL_CLIENT_ID,
       clientSecret: env.PAYPAL_CLIENT_SECRET,
-      configuration: { actions: { orders: { create: true, get: true, capture: true } }, context: { sandbox: true } },
+      configuration: {
+        actions: {
+          orders: { create: true, get: true, capture: true },
+          shipment: { create: true, get: true, update: true },
+          disputes: { list: true, get: true },
+        },
+        context: { sandbox: true },
+      },
     });
-    return new ToolkitProvider(toolkit.getTools() as unknown as ToolkitTools);
+    const tools = toolkit.getTools() as unknown as ToolkitTools & ConstructorParameters<typeof ToolkitTracking>[0] & ConstructorParameters<typeof ToolkitDisputes>[0];
+    return { provider: new ToolkitProvider(tools), tracking: new ToolkitTracking(tools), disputes: new ToolkitDisputes(tools) };
   }
-  return new FakeProvider(env.MANDATE_SIMULATED_MODE === "payer_action" ? "payer_action" : "auto_complete");
+  return {
+    provider: new FakeProvider(env.MANDATE_SIMULATED_MODE === "payer_action" ? "payer_action" : "auto_complete"),
+    tracking: null,
+    disputes: new SimulatedDisputes(),
+  };
 }
 
 export function createContainer(env: Env = process.env): Container {
   const appUrl = (env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
   const signer = env.MANDATE_SIGNING_KEY ? signerFromPem(env.MANDATE_SIGNING_KEY.replace(/\\n/g, "\n")) : generateSigner();
-  const provider = makeProvider(env);
+  const { provider, tracking, disputes } = makePayPal(env);
   const clock = () => new Date();
 
   const permits = new MemoryPermitStore();
@@ -58,6 +75,16 @@ export function createContainer(env: Env = process.env): Container {
   const receipts = new ReceiptLog(signer, clock);
   const mandates = new MemoryMandateStore();
   const approvals = new MemoryApprovalStore();
+  const fulfilment = new Fulfilment({
+    orders: new MemoryOrderStore(),
+    disputes: new MemoryDisputeStore(),
+    carrier: new SimulatedCarrier(),
+    receipts,
+    tracking,
+    disputeChannel: disputes,
+    publicKey: signer.publicKey,
+    clock,
+  });
   const executor = new Executor({
     provider,
     permits,
@@ -66,6 +93,7 @@ export function createContainer(env: Env = process.env): Container {
     publicKey: signer.publicKey,
     clock,
     urls: { returnUrl: `${appUrl}/api/paypal/return`, cancelUrl: `${appUrl}/api/paypal/cancel` },
+    onPaid: (p) => fulfilment.onPaid(p),
   });
   const governor = new Governor({ mandates, approvals, permits, payments, receipts, executor, signer, clock });
 
@@ -81,6 +109,7 @@ export function createContainer(env: Env = process.env): Container {
   return {
     governor,
     executor,
+    fulfilment,
     receipts,
     mandates,
     approvals,

@@ -1,3 +1,4 @@
+import { disputeTemplate, type DisputeFacts } from "./dispute-writer";
 import type { LlmClient, LlmRequest, LlmResponse, Message } from "./runtime";
 
 type Action = { tool: "search_catalog"; query: string } | { tool: "get_product"; sku: string } | { tool: "propose_purchase"; sku: string; qty: number };
@@ -19,6 +20,13 @@ export class OfflinePlanner implements LlmClient {
   async complete(req: LlmRequest): Promise<LlmResponse> {
     const first = req.messages[0];
     const userText = typeof first?.content === "string" ? first.content : "";
+    if (req.tools.length === 0 && req.system.startsWith("DISPUTE_STATEMENT")) {
+      try {
+        return text(disputeTemplate(JSON.parse(userText) as DisputeFacts));
+      } catch {
+        return text("");
+      }
+    }
     if (req.tools.length === 0) return text(JSON.stringify(parsePolicyText(userText, req.system)));
 
     if (req.messages.length === 1) {
