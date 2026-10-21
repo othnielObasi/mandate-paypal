@@ -6,12 +6,14 @@ export class HttpError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly headers: Record<string, string> = {},
   ) {
     super(message);
   }
 }
 
-export const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "cache-control": "no-store" } });
+export const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
+  Response.json(data, { status, headers: { "cache-control": "no-store", ...headers } });
 
 export async function readBody<T extends z.ZodTypeAny>(req: Request, schema: T): Promise<z.infer<T>> {
   const text = await req.text();
@@ -33,7 +35,7 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
     try {
       return await fn(...args);
     } catch (e) {
-      if (e instanceof HttpError) return json({ error: e.message }, e.status);
+      if (e instanceof HttpError) return json({ error: e.message }, e.status, e.headers);
       console.error(e);
       return json({ error: "Internal error." }, 500);
     }

@@ -4,6 +4,7 @@ import { parsePolicy, type Policy } from "@/lib/gate/policy";
 import { getContainer } from "@/lib/server/container";
 import { DEMO_USER } from "@/lib/server/demo";
 import { handle, HttpError, json, readBody } from "@/lib/server/http";
+import { enforceLimit } from "@/lib/server/limits";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,6 +25,7 @@ export const POST = handle(async (req: Request) => {
     if (p.value.expires < new Date().toISOString().slice(0, 10)) throw new HttpError(422, "The expiry date is in the past.");
     policy = p.value;
   } else {
+    enforceLimit(req, c);
     const parsed = await parseMandate(text, c.newLlm(), new Date());
     if (!parsed.ok) throw new HttpError(422, parsed.error);
     policy = parsed.policy;

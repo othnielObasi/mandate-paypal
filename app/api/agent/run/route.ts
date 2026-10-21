@@ -2,6 +2,7 @@ import { z } from "zod";
 import { runAgentTask } from "@/lib/agent/runtime";
 import { getContainer } from "@/lib/server/container";
 import { handle, HttpError, json, readBody } from "@/lib/server/http";
+import { enforceLimit } from "@/lib/server/limits";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,6 +21,7 @@ export const POST = handle(async (req: Request) => {
   const { mandateId, task, drill } = await readBody(req, Body);
   const c = getContainer();
   if (!(await c.mandates.get(mandateId))) throw new HttpError(404, "Mandate not found.");
+  enforceLimit(req, c);
   const result = await runAgentTask({
     task,
     mandateId,

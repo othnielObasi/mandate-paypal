@@ -18,6 +18,9 @@ import { SimulatedDisputes, ToolkitDisputes, ToolkitTracking } from "../paypal/t
 import { FakeProvider } from "../paypal/fake-provider";
 import type { PaymentProvider } from "../paypal/provider";
 import { ToolkitProvider, type ToolkitTools } from "../paypal/toolkit-provider";
+import { PayPalAuth, PayPalWebhookVerifier } from "../paypal/webhook-verifier";
+import { RateLimiter } from "./rate-limit";
+import type { WebhookVerifier } from "./webhooks";
 
 export type Env = Record<string, string | undefined>;
 
@@ -31,6 +34,11 @@ export interface Container {
   payments: PaymentStore;
   stores: Stores;
   storage: "postgres" | "memory";
+  /** Null when webhooks are not configured; the route then refuses every delivery. */
+  webhookVerifier: WebhookVerifier | null;
+  /** Limits routes that call the model, to protect the hosted demo's API budget. */
+  limiter: RateLimiter;
+  proxyHops: number;
   catalog: Catalog;
   signer: Signer;
   /** A fresh model client per agent run (the offline planner is stateful). */
@@ -73,7 +81,18 @@ function makeSql(env: Env, given?: Sql): Sql | null {
   return new Pool({ connectionString: env.DATABASE_URL, max: 5 }) as unknown as Sql;
 }
 
-export function createContainer(env: Env = process.env, opts: { sql?: Sql } = {}): Container {
+function makeVerifier(env: Env): WebhookVerifier | null {
+  if (!(env.PAYPAL_CLIENT_ID && env.PAYPAL_CLIENT_SECRET && env.PAYPAL_WEBHOOK_ID)) return null;
+  const auth = new PayPalAuth({ clientId: env.PAYPAL_CLIENT_ID, clientSecret: env.PAYPAL_CLIENT_SECRET });
+  return new PayPalWebhookVerifier({ webhookId: env.PAYPAL_WEBHOOK_ID, auth });
+}
+
+const intEnv = (v: string | undefined, d: number) => {
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 ? n : d;
+};
+
+export function createContainer(env: Env = process.env, opts: { sql?: Sql; webhookVerifier?: WebhookVerifier } = {}): Container {
   const appUrl = (env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
   const sql = makeSql(env, opts.sql);
   if (sql && !env.MANDATE_SIGNING_KEY)
@@ -130,6 +149,12 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql } = {}
     signer,
     newLlm,
     storage: sql ? "postgres" : "memory",
+    webhookVerifier: opts.webhookVerifier ?? makeVerifier(env),
+    limiter: new RateLimiter({
+      perIp: { limit: intEnv(env.RATE_LIMIT_PER_MINUTE, 10), windowMs: 60_000 },
+      global: { limit: intEnv(env.RATE_LIMIT_PER_HOUR, 300), windowMs: 3_600_000 },
+    }),
+    proxyHops: intEnv(env.TRUSTED_PROXY_HOPS, 1),
     providerName: provider.name,
     modelName: apiKey ? model : "offline-planner",
     signingKey: env.MANDATE_SIGNING_KEY ? "configured" : "ephemeral",

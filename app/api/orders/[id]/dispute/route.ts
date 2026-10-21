@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getContainer } from "@/lib/server/container";
 import { asHttp } from "@/lib/server/errors";
 import { handle, json, readBody } from "@/lib/server/http";
+import { enforceLimit } from "@/lib/server/limits";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -17,6 +18,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   const { id } = await ctx.params;
   const body = await readBody(req, Body);
   const c = getContainer();
+  if (body.action === "draft") enforceLimit(req, c); // drafting calls the model
   try {
     if (body.action === "draft") return json(await c.fulfilment.draftDispute(id, c.newLlm()));
     if (body.action === "file") return json(await c.fulfilment.fileDispute(id, body.confirm === true));
