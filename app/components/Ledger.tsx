@@ -27,6 +27,18 @@ function KindBadge(p: ICellRendererParams<LedgerRow, Kind>) {
   return <span className={`badge ${TONE_CLASS[KIND_TONE[p.value]]}`}>{p.value}</span>;
 }
 
+function useMedia(query: string) {
+  const [match, setMatch] = useState(false);
+  useEffect(() => {
+    const m = window.matchMedia(query);
+    setMatch(m.matches);
+    const on = (e: MediaQueryListEvent) => setMatch(e.matches);
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, [query]);
+  return match;
+}
+
 function useDark() {
   const [dark, setDark] = useState(false);
   useEffect(() => {
@@ -51,6 +63,7 @@ export function Ledger({ receipts, mandateId }: { receipts: Receipt[]; mandateId
   const [quick, setQuick] = useState("");
   const [onlyThis, setOnlyThis] = useState(true);
   const dark = useDark();
+  const narrow = useMedia("(max-width: 640px)");
 
   useEffect(() => {
     setRows(toRows(receipts));
@@ -75,19 +88,20 @@ export function Ledger({ receipts, mandateId }: { receipts: Receipt[]; mandateId
 
   const columns = useMemo<ColDef<LedgerRow>[]>(
     () => [
-      { field: "seq", headerName: "#", width: 90, sort: "desc", filter: "agNumberColumnFilter" },
+      { field: "seq", headerName: "#", width: narrow ? 70 : 90, sort: "desc", filter: "agNumberColumnFilter" },
       {
         field: "time",
         headerName: "Time",
         width: 110,
+        hide: narrow,
         valueFormatter: (p) => (p.value ? new Date(p.value as string).toLocaleTimeString() : ""),
       },
-      { field: "kind", headerName: "Kind", width: 160, cellRenderer: KindBadge, filter: "agTextColumnFilter", cellClass: "badgecell" },
+      { field: "kind", headerName: "Kind", width: narrow ? 128 : 160, cellRenderer: KindBadge, filter: "agTextColumnFilter", cellClass: "badgecell" },
       {
         field: "summary",
         headerName: "What happened (double-click to edit)",
         flex: 1,
-        minWidth: 280,
+        minWidth: narrow ? 200 : 280,
         editable: true,
         wrapText: true,
         autoHeight: true,
@@ -95,9 +109,9 @@ export function Ledger({ receipts, mandateId }: { receipts: Receipt[]; mandateId
         filter: "agTextColumnFilter",
         cellClassRules: { "cell-edited": (p) => !!p.data && edited.has(p.data.seq) },
       },
-      { field: "hash", headerName: "Hash", width: 150, cellClass: "mono", valueFormatter: (p) => `${String(p.value ?? "").slice(0, 12)}…` },
+      { field: "hash", headerName: "Hash", width: 150, hide: narrow, cellClass: "mono", valueFormatter: (p) => `${String(p.value ?? "").slice(0, 12)}…` },
     ],
-    [edited],
+    [edited, narrow],
   );
 
   const shown = useMemo(() => (onlyThis && mandateId ? rows.filter((r) => mandateOf.get(r.seq) === mandateId) : rows), [rows, onlyThis, mandateId, mandateOf]);
@@ -149,7 +163,7 @@ export function Ledger({ receipts, mandateId }: { receipts: Receipt[]; mandateId
         domLayout="autoHeight"
         pagination
         paginationPageSize={10}
-        paginationPageSizeSelector={[10, 25, 50]}
+        paginationPageSizeSelector={narrow ? false : [10, 25, 50]}
         singleClickEdit={false}
         stopEditingWhenCellsLoseFocus
         onCellValueChanged={onEdit}
