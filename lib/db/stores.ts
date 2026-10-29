@@ -1,3 +1,4 @@
+import { MemoryCredentialStore, type CredentialRecord, type CredentialStore } from "../ap2/store";
 import { MemoryEventStore, MemoryPendingStore, type EventStore, type PendingPayment, type PendingStore } from "../core/pending";
 import { MemoryPaymentStore, periodStart, type PaymentRecord, type PaymentStore, type Period } from "../core/spend";
 import {
@@ -35,6 +36,7 @@ export interface Stores {
   disputes: DisputeStore;
   parcels: ParcelStore;
   events: EventStore;
+  credentials: CredentialStore;
 }
 
 export function memoryStores(): Stores {
@@ -49,6 +51,7 @@ export function memoryStores(): Stores {
     disputes: new MemoryDisputeStore(),
     parcels: new MemoryParcelStore(),
     events: new MemoryEventStore(),
+    credentials: new MemoryCredentialStore(),
   };
 }
 
@@ -273,6 +276,35 @@ class PgEvents implements EventStore {
   }
 }
 
+class PgCredentials implements CredentialStore {
+  constructor(private db: PgDb) {}
+  async put(r: CredentialRecord) {
+    await this.db.q(`INSERT INTO credentials (payment_mandate_id, mandate_id, paypal_order_id, data) VALUES ($1, $2, $3, $4::jsonb)`, [
+      r.paymentMandateId,
+      r.mandateId,
+      r.paypalOrderId,
+      toJson(r),
+    ]);
+  }
+  async attachOrder(id: string, paypalOrderId: string) {
+    const rows = await this.db.q(
+      `UPDATE credentials SET paypal_order_id = $2, data = jsonb_set(data, '{paypalOrderId}', to_jsonb($2::text)) WHERE payment_mandate_id = $1 RETURNING payment_mandate_id`,
+      [id, paypalOrderId],
+    );
+    if (rows.length === 0) throw new Error("payment mandate not found");
+  }
+  async getByOrder(paypalOrderId: string) {
+    return one(await this.db.q<Doc<CredentialRecord>>(`SELECT data FROM credentials WHERE paypal_order_id = $1`, [paypalOrderId]));
+  }
+  async list(mandateId?: string) {
+    return all(
+      mandateId
+        ? await this.db.q<Doc<CredentialRecord>>(`SELECT data FROM credentials WHERE mandate_id = $1 ORDER BY n`, [mandateId])
+        : await this.db.q<Doc<CredentialRecord>>(`SELECT data FROM credentials ORDER BY n`),
+    );
+  }
+}
+
 export function pgStores(db: PgDb): Stores {
   return {
     mandates: new PgMandates(db),
@@ -285,5 +317,6 @@ export function pgStores(db: PgDb): Stores {
     disputes: new PgDisputes(db),
     parcels: new PgParcels(db),
     events: new PgEvents(db),
+    credentials: new PgCredentials(db),
   };
 }

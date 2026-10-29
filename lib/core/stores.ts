@@ -1,9 +1,12 @@
+import type { IntentMandate } from "../ap2/mandates";
 import type { OrderSpec } from "../gate/canonical";
 import type { Decision, Intent, Mandate, MandateStatus } from "../gate/types";
 
 export interface MandateRecord extends Mandate {
   rawText: string;
   createdAt: string;
+  /** AP2-style Intent Mandate: the user's signature over these exact limits. */
+  intentMandate?: IntentMandate;
 }
 
 export interface MandateStore {

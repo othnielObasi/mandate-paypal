@@ -10,6 +10,9 @@ import { generateSigner } from "@/lib/gate/keys";
 import { MemoryPermitStore } from "@/lib/gate/permits";
 import type { Policy } from "@/lib/gate/policy";
 import { ReceiptLog, verifyChain } from "@/lib/gate/receipts";
+import { Credentials } from "@/lib/ap2/credentials";
+import { MemoryCredentialStore } from "@/lib/ap2/store";
+import { EchoMerchants } from "../helpers/echo-merchants";
 
 const policy: Policy = {
   categories: ["household"],
@@ -50,6 +53,9 @@ function build(providerMode: "auto_complete" | "payer_action" = "auto_complete")
     executor,
     signer,
     clock,
+    credentials: new Credentials(signer),
+    merchants: new EchoMerchants(signer),
+    credentialStore: new MemoryCredentialStore(),
   });
   return { governor, receipts, provider, payments, signer, advance, clock };
 }

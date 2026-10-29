@@ -11,11 +11,11 @@ export class FakeProvider implements PaymentProvider {
   calls = { create: 0, capture: 0 };
   failNext = false;
   private seq = 0;
-  private orders = new Map<string, { status: string; captureId?: string }>();
+  private orders = new Map<string, { status: string; captureId?: string; note: string | null }>();
 
   constructor(private mode: "auto_complete" | "payer_action" = "auto_complete") {}
 
-  async createOrder(_order: OrderSpec, _urls: ReturnUrls): Promise<CreateResult> {
+  async createOrder(_order: OrderSpec, _urls: ReturnUrls, meta: { note?: string } = {}): Promise<CreateResult> {
     this.calls.create += 1;
     if (this.failNext) {
       this.failNext = false;
@@ -23,12 +23,13 @@ export class FakeProvider implements PaymentProvider {
     }
     // Unique across restarts, like real PayPal ids: a counter alone would repeat after a restart.
     const id = `SIM-${randomBytes(5).toString("hex").toUpperCase()}${String(++this.seq).padStart(3, "0")}`;
+    const note = meta.note ? meta.note.slice(0, 127) : null;
     if (this.mode === "payer_action") {
-      this.orders.set(id, { status: "PAYER_ACTION_REQUIRED" });
+      this.orders.set(id, { status: "PAYER_ACTION_REQUIRED", note });
       return { paypalOrderId: id, status: "PAYER_ACTION_REQUIRED", approveUrl: `https://mandate.local/simulated-approve?token=${id}` };
     }
-    const captureId = `SIMCAP-${this.seq}`;
-    this.orders.set(id, { status: "COMPLETED", captureId });
+    const captureId = `SIMCAP-${randomBytes(6).toString("hex").toUpperCase()}`;
+    this.orders.set(id, { status: "COMPLETED", captureId, note });
     return { paypalOrderId: id, status: "COMPLETED", captureId };
   }
 
@@ -44,5 +45,9 @@ export class FakeProvider implements PaymentProvider {
 
   async getOrderStatus(paypalOrderId: string) {
     return this.orders.get(paypalOrderId)?.status ?? "UNKNOWN";
+  }
+
+  async getOrderNote(paypalOrderId: string) {
+    return this.orders.get(paypalOrderId)?.note ?? null;
   }
 }

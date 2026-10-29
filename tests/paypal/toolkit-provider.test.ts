@@ -88,6 +88,28 @@ describe("ToolkitProvider", () => {
     expect(tools.create_order.execute).not.toHaveBeenCalled();
   });
 
+  it("carries the payment mandate fingerprint as the first item's description", async () => {
+    const tools = fakeTools();
+    await new ToolkitProvider(tools).createOrder(order, urls, { note: "AP2 mandate pm_abc #0123456789abcdef" });
+    const args = (tools.create_order.execute.mock.calls[0] as unknown as [{ items: Array<{ description?: string }> }])[0];
+    expect(args.items[0]!.description).toBe("AP2 mandate pm_abc #0123456789abcdef");
+    expect(args.items[1]!.description).toBeUndefined();
+  });
+
+  it("truncates a note to PayPal's 127-character limit", async () => {
+    const tools = fakeTools();
+    await new ToolkitProvider(tools).createOrder(order, urls, { note: "x".repeat(300) });
+    const args = (tools.create_order.execute.mock.calls[0] as unknown as [{ items: Array<{ description?: string }> }])[0];
+    expect(args.items[0]!.description).toHaveLength(127);
+  });
+
+  it("reads the note back from the PayPal order", async () => {
+    const tools = fakeTools({ get_order: JSON.stringify({ id: "5O1", status: "COMPLETED", purchase_units: [{ items: [{ name: "A", description: "AP2 mandate pm_abc #01" }] }] }) });
+    expect(await new ToolkitProvider(tools).getOrderNote("5O1")).toBe("AP2 mandate pm_abc #01");
+    const none = fakeTools({ get_order: JSON.stringify({ id: "5O1", status: "COMPLETED", purchase_units: [{ items: [{ name: "A" }] }] }) });
+    expect(await new ToolkitProvider(none).getOrderNote("5O1")).toBeNull();
+  });
+
   it("reports order status", async () => {
     expect(await new ToolkitProvider(fakeTools()).getOrderStatus("5O190127TN364715T")).toBe("APPROVED");
   });

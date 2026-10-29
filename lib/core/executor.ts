@@ -43,8 +43,15 @@ export type PayResult =
         | "unknown_order";
     };
 
+export interface PaymentMeta {
+  /** Shown on the PayPal order (item description): the payment mandate's fingerprint. */
+  note?: string;
+  paymentMandateId?: string;
+}
+
 export interface PaidOrder {
   paypalOrderId: string;
+  paymentMandateId?: string;
   captureId: string;
   order: OrderSpec;
   amountMinor: number;
@@ -81,11 +88,16 @@ export class Executor {
     return this.d.provider.name;
   }
 
+  /** Read back the payment-mandate note PayPal holds for an order (read-only). */
+  orderNote(paypalOrderId: string): Promise<string | null> {
+    return this.d.provider.getOrderNote(paypalOrderId);
+  }
+
   pendingMinor(mandateId: string): Promise<number> {
     return this.pending.sumFor(mandateId);
   }
 
-  async pay(permitId: string, orderIn: OrderSpec): Promise<PayResult> {
+  async pay(permitId: string, orderIn: OrderSpec, meta: PaymentMeta = {}): Promise<PayResult> {
     const refuse = async (reason: Extract<PayResult, { status: "refused" }>["reason"]): Promise<PayResult> => {
       const mandateId = typeof orderIn?.mandateId === "string" ? orderIn.mandateId : "unknown";
       await this.d.receipts.append({ mandateId, type: "refusal", summary: `Executor refused payment: ${reason}`, payload: { permitId, reason } });
@@ -109,9 +121,9 @@ export class Executor {
 
     const money = formatMoney(total, order.currency);
     try {
-      const created = await this.d.provider.createOrder(order, this.d.urls);
+      const created = await this.d.provider.createOrder(order, this.d.urls, { note: meta.note });
       if (created.status === "PAYER_ACTION_REQUIRED") {
-        await this.pending.put(created.paypalOrderId, { mandateId: order.mandateId, amountMinor: total, currency: order.currency, order, permitId: permit.id });
+        await this.pending.put(created.paypalOrderId, { mandateId: order.mandateId, amountMinor: total, currency: order.currency, order, permitId: permit.id, paymentMandateId: meta.paymentMandateId });
         await this.d.receipts.append({
           mandateId: order.mandateId,
           type: "payment_pending",
@@ -122,7 +134,7 @@ export class Executor {
       }
       const captured = created.status === "COMPLETED" ? created : await this.d.provider.captureOrder(created.paypalOrderId);
       await this.settle(order.mandateId, total, order.currency, captured.paypalOrderId, captured.captureId, permit.id, order.merchantId);
-      await this.handOff({ paypalOrderId: captured.paypalOrderId, captureId: captured.captureId, order, amountMinor: total, permitId: permit.id });
+      await this.handOff({ paypalOrderId: captured.paypalOrderId, captureId: captured.captureId, order, amountMinor: total, permitId: permit.id, paymentMandateId: meta.paymentMandateId });
       return { status: "paid", paypalOrderId: captured.paypalOrderId, captureId: captured.captureId, amountMinor: total };
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
@@ -143,7 +155,7 @@ export class Executor {
     try {
       const captured = await this.d.provider.captureOrder(paypalOrderId);
       await this.settle(p.mandateId, p.amountMinor, p.currency, captured.paypalOrderId, captured.captureId, p.permitId, p.order.merchantId);
-      await this.handOff({ paypalOrderId: captured.paypalOrderId, captureId: captured.captureId, order: p.order, amountMinor: p.amountMinor, permitId: p.permitId });
+      await this.handOff({ paypalOrderId: captured.paypalOrderId, captureId: captured.captureId, order: p.order, amountMinor: p.amountMinor, permitId: p.permitId, paymentMandateId: p.paymentMandateId });
       return { status: "paid", paypalOrderId, captureId: captured.captureId, amountMinor: p.amountMinor };
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);

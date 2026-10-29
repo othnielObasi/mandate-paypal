@@ -41,17 +41,19 @@ export class ToolkitProvider implements PaymentProvider {
   readonly name = "paypal-agent-toolkit";
   constructor(private tools: ToolkitTools) {}
 
-  async createOrder(order: OrderSpec, urls: ReturnUrls): Promise<CreateResult> {
+  async createOrder(order: OrderSpec, urls: ReturnUrls, meta: { note?: string } = {}): Promise<CreateResult> {
     if (!TOOLKIT_CURRENCIES.has(order.currency))
       throw new PaymentError(`The PayPal Agent Toolkit only creates orders in USD; got ${order.currency}.`);
     const args = {
       currencyCode: order.currency,
-      items: order.items.map((i) => ({
+      items: order.items.map((i, n) => ({
         name: i.title,
         quantity: i.qty,
         itemCost: minorToDecimal(i.unitMinor),
         itemTotal: minorToDecimal(i.unitMinor * i.qty),
         taxPercent: 0,
+        // The toolkit drops order-level notes but passes item descriptions to PayPal.
+        ...(n === 0 && meta.note ? { description: meta.note.slice(0, 127) } : {}),
       })),
       returnUrl: urls.returnUrl,
       cancelUrl: urls.cancelUrl,
@@ -80,6 +82,12 @@ export class ToolkitProvider implements PaymentProvider {
   async getOrderStatus(paypalOrderId: string): Promise<string> {
     const res = parse(await this.tools.get_order.execute({ id: paypalOrderId } as never, OPTS), "get_order");
     return String(res.status ?? "UNKNOWN");
+  }
+
+  async getOrderNote(paypalOrderId: string): Promise<string | null> {
+    const res = parse(await this.tools.get_order.execute({ id: paypalOrderId } as never, OPTS), "get_order");
+    const units = res.purchase_units as Array<{ items?: Array<{ description?: string }> }> | undefined;
+    return units?.[0]?.items?.[0]?.description ?? null;
   }
 }
 

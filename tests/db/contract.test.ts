@@ -173,6 +173,25 @@ function contract(name: string, setup: () => Promise<{ fresh: () => Promise<Stor
       expect(await s.parcels.get("nope")).toBeUndefined();
     });
 
+    it("credentials: store a payment mandate, attach its PayPal order, look it up", async () => {
+      const rec = {
+        paymentMandateId: "pm_1",
+        mandateId: "m1",
+        paypalOrderId: null,
+        cart: { contents: { id: "cart_1" }, merchant_signature: "a.b.c", timestamp: now.toISOString() },
+        payment: { payment_mandate_contents: { payment_mandate_id: "pm_1" }, user_authorization: "a.b.c" },
+        fingerprint: "AP2 mandate pm_1 #00",
+        createdAt: now.toISOString(),
+      } as never;
+      await s.credentials.put(rec);
+      await expect(s.credentials.put(rec)).rejects.toThrow();
+      expect(await s.credentials.getByOrder("PP-1")).toBeUndefined();
+      await s.credentials.attachOrder("pm_1", "PP-1");
+      expect(await s.credentials.getByOrder("PP-1")).toMatchObject({ paymentMandateId: "pm_1", paypalOrderId: "PP-1", cart: { contents: { id: "cart_1" } } });
+      expect((await s.credentials.list("m1")).length).toBe(1);
+      await expect(s.credentials.attachOrder("nope", "x")).rejects.toThrow();
+    });
+
     it("webhook events: each id is accepted once", async () => {
       expect(await s.events.firstSeen("WH-1")).toBe(true);
       expect(await s.events.firstSeen("WH-1")).toBe(false);
@@ -182,7 +201,7 @@ function contract(name: string, setup: () => Promise<{ fresh: () => Promise<Stor
 
 contract("memory", async () => ({ fresh: async () => memoryStores() }));
 
-const TRUNCATE = "TRUNCATE mandates, approvals, permits, payments, receipts, pending_orders, orders, disputes, parcels, webhook_events RESTART IDENTITY";
+const TRUNCATE = "TRUNCATE mandates, approvals, permits, payments, receipts, pending_orders, orders, disputes, parcels, webhook_events, credentials RESTART IDENTITY";
 
 contract("postgres (PGlite)", async () => {
   const pg = new PGlite();

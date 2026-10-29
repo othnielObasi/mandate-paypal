@@ -14,4 +14,16 @@ describe("simulated provider", () => {
     }
     expect(ids.size).toBe(60);
   });
+
+  it("never reuses a capture id across instances", async () => {
+    const caps = new Set<string>();
+    for (let i = 0; i < 3; i++) {
+      const p = new FakeProvider();
+      for (let j = 0; j < 20; j++) {
+        const r = await p.createOrder(order, urls);
+        if (r.status === "COMPLETED") caps.add(r.captureId);
+      }
+    }
+    expect(caps.size).toBe(60);
+  });
 });

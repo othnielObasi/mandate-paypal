@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS disputes (
   order_id TEXT PRIMARY KEY, status TEXT NOT NULL, data JSONB NOT NULL);
 CREATE TABLE IF NOT EXISTS parcels (
   tracking_number TEXT PRIMARY KEY, data JSONB NOT NULL);
+CREATE TABLE IF NOT EXISTS credentials (
+  payment_mandate_id TEXT PRIMARY KEY, n BIGSERIAL, mandate_id TEXT NOT NULL, paypal_order_id TEXT, data JSONB NOT NULL);
+CREATE INDEX IF NOT EXISTS credentials_order ON credentials (paypal_order_id);
 CREATE TABLE IF NOT EXISTS webhook_events (
   id TEXT PRIMARY KEY, received_at TIMESTAMPTZ NOT NULL DEFAULT now());
 CREATE INDEX IF NOT EXISTS receipts_mandate ON receipts (mandate_id, seq);

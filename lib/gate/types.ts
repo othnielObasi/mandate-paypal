@@ -53,6 +53,7 @@ export type RuleId =
   | "seller"
   | "item_cap"
   | "budget"
+  | "credentials"
   | "gate_error";
 
 export interface Decision {

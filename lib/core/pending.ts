@@ -8,6 +8,7 @@ export interface PendingPayment {
   currency: Currency;
   order: OrderSpec;
   permitId: string;
+  paymentMandateId?: string;
 }
 
 export interface PendingStore {

@@ -22,9 +22,12 @@ export interface CaptureResult {
  */
 export interface PaymentProvider {
   readonly name: string;
-  createOrder(order: OrderSpec, urls: ReturnUrls): Promise<CreateResult>;
+  /** meta.note is carried on the PayPal order (first item's description, max 127 chars). */
+  createOrder(order: OrderSpec, urls: ReturnUrls, meta?: { note?: string }): Promise<CreateResult>;
   captureOrder(paypalOrderId: string): Promise<CaptureResult>;
   getOrderStatus(paypalOrderId: string): Promise<string>;
+  /** The note PayPal holds for this order, read back from PayPal. */
+  getOrderNote(paypalOrderId: string): Promise<string | null>;
 }
 
 export class PaymentError extends Error {

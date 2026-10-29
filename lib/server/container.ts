@@ -14,6 +14,8 @@ import { ReceiptLog } from "../gate/receipts";
 import { SimulatedCarrier } from "../fulfilment/carrier";
 import { Fulfilment, type DisputeChannel, type TrackingChannel } from "../fulfilment/service";
 import { DEMO_CATALOG, Catalog } from "../merchant/catalog";
+import { CatalogMerchants, DEMO_MERCHANTS, type Merchants } from "../merchant/merchants";
+import { Credentials } from "../ap2/credentials";
 import { SimulatedDisputes, ToolkitDisputes, ToolkitTracking } from "../paypal/toolkit-fulfilment";
 import { FakeProvider } from "../paypal/fake-provider";
 import type { PaymentProvider } from "../paypal/provider";
@@ -40,6 +42,8 @@ export interface Container {
   limiter: RateLimiter;
   proxyHops: number;
   catalog: Catalog;
+  credentials: Credentials;
+  merchants: Merchants;
   signer: Signer;
   /** A fresh model client per agent run (the offline planner is stateful). */
   newLlm: (opts?: { drill?: boolean }) => LlmClient;
@@ -125,7 +129,22 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     onPaid: (p) => fulfilment.onPaid(p),
     pending: stores.pending,
   });
-  const governor = new Governor({ mandates, approvals, permits, payments, receipts, executor, signer, clock });
+  const catalog = new Catalog(DEMO_CATALOG);
+  const credentials = new Credentials(signer);
+  const merchants = new CatalogMerchants(signer, catalog, DEMO_MERCHANTS);
+  const governor = new Governor({
+    mandates,
+    approvals,
+    permits,
+    payments,
+    receipts,
+    executor,
+    signer,
+    clock,
+    credentials,
+    merchants,
+    credentialStore: stores.credentials,
+  });
 
   const apiKey = env.ANTHROPIC_API_KEY;
   const model = env.MANDATE_MODEL ?? "claude-sonnet-5-5";
@@ -145,7 +164,9 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     approvals,
     payments,
     stores,
-    catalog: new Catalog(DEMO_CATALOG),
+    catalog,
+    credentials,
+    merchants,
     signer,
     newLlm,
     storage: sql ? "postgres" : "memory",
