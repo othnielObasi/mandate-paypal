@@ -41,6 +41,8 @@ export interface Proposal {
   category: string;
   merchantVerified: boolean;
   origin: Intent["origin"];
+  /** Which agent proposed it (e.g. an MCP connection's label), for the record. */
+  via?: string;
 }
 
 export type ApprovalStatus = "pending" | "approved" | "declined" | "expired";

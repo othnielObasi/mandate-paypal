@@ -1,3 +1,4 @@
+import { MemoryConnectionStore, type ConnectionRecord, type ConnectionStore } from "../mcp/connections";
 import { MemoryCredentialStore, type CredentialRecord, type CredentialStore } from "../ap2/store";
 import { MemoryEventStore, MemoryPendingStore, type EventStore, type PendingPayment, type PendingStore } from "../core/pending";
 import { MemoryPaymentStore, periodStart, type PaymentRecord, type PaymentStore, type Period } from "../core/spend";
@@ -37,6 +38,7 @@ export interface Stores {
   parcels: ParcelStore;
   events: EventStore;
   credentials: CredentialStore;
+  connections: ConnectionStore;
 }
 
 export function memoryStores(): Stores {
@@ -52,6 +54,7 @@ export function memoryStores(): Stores {
     parcels: new MemoryParcelStore(),
     events: new MemoryEventStore(),
     credentials: new MemoryCredentialStore(),
+    connections: new MemoryConnectionStore(),
   };
 }
 
@@ -305,6 +308,26 @@ class PgCredentials implements CredentialStore {
   }
 }
 
+class PgConnections implements ConnectionStore {
+  constructor(private db: PgDb) {}
+  async put(r: ConnectionRecord) {
+    await this.db.q(`INSERT INTO connections (id, mandate_id, token_hash, data) VALUES ($1, $2, $3, $4::jsonb)`, [r.id, r.mandateId, r.tokenHash, toJson(r)]);
+  }
+  async getByHash(h: string) {
+    return one(await this.db.q<Doc<ConnectionRecord>>(`SELECT data FROM connections WHERE token_hash = $1`, [h]));
+  }
+  async list(mandateId: string) {
+    return all(await this.db.q<Doc<ConnectionRecord>>(`SELECT data FROM connections WHERE mandate_id = $1 ORDER BY n`, [mandateId]));
+  }
+  async revoke(id: string, at: string) {
+    const rows = await this.db.q(
+      `UPDATE connections SET data = jsonb_set(data, '{revokedAt}', to_jsonb($2::text)) WHERE id = $1 AND data->>'revokedAt' IS NULL RETURNING id`,
+      [id, at],
+    );
+    return rows.length === 1;
+  }
+}
+
 export function pgStores(db: PgDb): Stores {
   return {
     mandates: new PgMandates(db),
@@ -318,5 +341,6 @@ export function pgStores(db: PgDb): Stores {
     parcels: new PgParcels(db),
     events: new PgEvents(db),
     credentials: new PgCredentials(db),
+    connections: new PgConnections(db),
   };
 }

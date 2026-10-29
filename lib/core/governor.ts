@@ -156,7 +156,7 @@ export class Governor {
     await this.d.receipts.append({
       mandateId: mandate.id,
       type: "decision",
-      summary: `${label}: ${itemTitle} ${money} from ${q.merchant.name}. ${decision.reason}`,
+      summary: `${label}: ${itemTitle} ${money} from ${q.merchant.name}${p.via ? ` (via ${p.via})` : ""}. ${decision.reason}`,
       payload: { intent, decision, digest, spentMinor, reservedMinor, cartId: q.cart.contents.id, cartHash },
     });
 

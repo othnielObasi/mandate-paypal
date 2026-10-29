@@ -54,7 +54,7 @@ export class AgentSession {
   private untrustedVocab = new Set<string>();
   private discovered = new Map<string, boolean>(); // sku -> found by a clean search?
 
-  constructor(private d: { task: string; mandateId: string; catalog: Catalog; propose: ProposeFn }) {
+  constructor(private d: { task: string; mandateId: string; catalog: Catalog; propose: ProposeFn; via?: string }) {
     this.taskVocab = new Set(tokens(d.task));
   }
 
@@ -124,6 +124,7 @@ export class AgentSession {
       category: p.category,
       merchantVerified: p.merchantVerified,
       origin: this.discovered.get(sku) === true ? "agent" : "untrusted_instruction",
+      ...(this.d.via ? { via: this.d.via } : {}),
     };
     const outcome = await this.d.propose(proposal);
     return { ok: true, result: outcome };

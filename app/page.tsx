@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Policy } from "@/lib/gate/policy";
 import type { Receipt } from "@/lib/gate/receipts";
 import { api, usd } from "./components/api";
+import { Connections } from "./components/Connections";
 import { Ledger } from "./components/Ledger";
 import { Orders, type OrderView } from "./components/Orders";
 import { RulesEditor } from "./components/RulesEditor";
@@ -276,6 +277,7 @@ export default function Home() {
               </div>
             </div>
           ))}
+          {mandate && mandate.status !== "revoked" && <Connections mandateId={mandate.id} onChange={() => void refresh()} />}
           <ul className="feed" data-testid="feed">
             {events.map((e, i) =>
               e.kind === "text" ? (

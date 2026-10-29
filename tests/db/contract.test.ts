@@ -192,6 +192,18 @@ function contract(name: string, setup: () => Promise<{ fresh: () => Promise<Stor
       await expect(s.credentials.attachOrder("nope", "x")).rejects.toThrow();
     });
 
+    it("connections: look up by token hash, list, revoke once", async () => {
+      const r = { id: "c1", mandateId: "m1", label: "Claude", tokenHash: "h1", createdAt: now.toISOString(), revokedAt: null };
+      await s.connections.put(r);
+      await s.connections.put({ ...r, id: "c2", tokenHash: "h2", mandateId: "m2" });
+      expect(await s.connections.getByHash("h1")).toEqual(r);
+      expect(await s.connections.getByHash("nope")).toBeUndefined();
+      expect((await s.connections.list("m1")).map((x) => x.id)).toEqual(["c1"]);
+      const wins = await Promise.all(Array.from({ length: 5 }, () => s.connections.revoke("c1", now.toISOString())));
+      expect(wins.filter(Boolean)).toHaveLength(1);
+      expect((await s.connections.getByHash("h1"))?.revokedAt).toBe(now.toISOString());
+    });
+
     it("webhook events: each id is accepted once", async () => {
       expect(await s.events.firstSeen("WH-1")).toBe(true);
       expect(await s.events.firstSeen("WH-1")).toBe(false);
@@ -201,7 +213,7 @@ function contract(name: string, setup: () => Promise<{ fresh: () => Promise<Stor
 
 contract("memory", async () => ({ fresh: async () => memoryStores() }));
 
-const TRUNCATE = "TRUNCATE mandates, approvals, permits, payments, receipts, pending_orders, orders, disputes, parcels, webhook_events, credentials RESTART IDENTITY";
+const TRUNCATE = "TRUNCATE mandates, approvals, permits, payments, receipts, pending_orders, orders, disputes, parcels, webhook_events, credentials, connections RESTART IDENTITY";
 
 contract("postgres (PGlite)", async () => {
   const pg = new PGlite();

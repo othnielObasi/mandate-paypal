@@ -17,6 +17,8 @@ import { DEMO_CATALOG, Catalog } from "../merchant/catalog";
 import { CatalogMerchants, DEMO_MERCHANTS, type Merchants } from "../merchant/merchants";
 import { Credentials } from "../ap2/credentials";
 import { checkPayment } from "../ap2/check";
+import { AgentSession } from "../agent/tools";
+import { McpSessions, type McpDeps } from "../mcp/server";
 import { SimulatedDisputes, ToolkitDisputes, ToolkitTracking } from "../paypal/toolkit-fulfilment";
 import { FakeProvider } from "../paypal/fake-provider";
 import type { PaymentProvider } from "../paypal/provider";
@@ -28,6 +30,8 @@ import type { WebhookVerifier } from "./webhooks";
 export type Env = Record<string, string | undefined>;
 
 export interface Container {
+  /** MCP server for outside AI assistants. */
+  mcp: McpDeps;
   governor: Governor;
   executor: Executor;
   fulfilment: Fulfilment;
@@ -162,7 +166,18 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     return apiKey ? new AnthropicClient({ apiKey, model }) : new OfflinePlanner();
   };
 
+  const mcp: McpDeps = {
+    connections: stores.connections,
+    mandates,
+    governor,
+    catalog,
+    appUrl,
+    allowedOrigins: [new URL(appUrl).origin, ...(env.MCP_ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean)],
+    sessions: new McpSessions((conn) => new AgentSession({ task: "", mandateId: conn.mandateId, catalog, propose: (p) => governor.propose(p), via: conn.label })),
+  };
+
   return {
+    mcp,
     governor,
     executor,
     fulfilment,
