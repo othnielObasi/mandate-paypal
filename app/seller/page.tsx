@@ -66,9 +66,9 @@ function SellerView() {
       { field: "createdAt", headerName: "Time", width: 110, sort: "desc", valueFormatter: (p) => (p.value ? new Date(p.value as string).toLocaleTimeString() : "") },
       { field: "items", headerName: "Items", flex: 1, minWidth: 200, valueFormatter: (p) => ((p.value as string[]) ?? []).join(", ") },
       { field: "total", headerName: "Total", width: 110 },
-      { field: "mode", headerName: "Authorised by", width: 190, cellRenderer: Mode },
-      { field: "ok", headerName: "Mandate check", width: 230, cellRenderer: Verdict },
-      { field: "paypalOrderId", headerName: "PayPal order", width: 190, cellClass: "mono" },
+      { field: "mode", headerName: "Authorised by", width: 190, cellRenderer: Mode, cellClass: "badgecell" },
+      { field: "ok", headerName: "Mandate check", width: 230, cellRenderer: Verdict, cellClass: "badgecell" },
+      { field: "paypalOrderId", headerName: "PayPal order", width: 190, cellClass: "mono badgecell" },
     ],
     [],
   );

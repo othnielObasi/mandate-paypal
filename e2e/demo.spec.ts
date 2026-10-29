@@ -125,3 +125,60 @@ test("works at phone width without sideways scrolling", async ({ page }) => {
   const box = await header.boundingBox();
   expect(box!.x).toBeLessThan(390 - 100);
 });
+
+test("the mandate is signed by the user (AP2 Intent Mandate)", async ({ page }) => {
+  await newMandate(page);
+  await expect(page.getByTestId("rules")).toContainText("✓ by you (AP2 Intent Mandate)");
+});
+
+test("seller view: an agent payment is shown as backed by the buyer's signed mandate", async ({ page }) => {
+  await newMandate(page);
+  await runAgent(page, "Buy washing-up liquid");
+  await page.getByRole("link", { name: "check as the seller →" }).first().click();
+  const detail = page.getByTestId("seller-detail");
+  await expect(detail).toContainText("Safe to fulfil");
+  for (const check of ["Intent Mandate signed by the user", "Cart Mandate signed by the merchant", "Payment attested by the Mandate gateway", "PayPal order carries this payment mandate"]) {
+    await expect(detail).toContainText(check);
+  }
+  await expect(page.getByTestId("seller-grid")).toContainText("Backed by signed mandate");
+});
+
+test("market-price rule: an above-market price goes to the user", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Mandate in plain English").fill("Office supplies, $100 a month, nothing over $30, never more than 10% above market price");
+  await page.getByRole("button", { name: /Read (my|new) rules/ }).click();
+  await expect(page.getByLabel("Max above market (%)")).toHaveValue("10");
+  await page.getByRole("button", { name: "Save mandate" }).click();
+  await expect(page.getByTestId("rules")).toContainText("at most 10% above market");
+  await runAgent(page, "Buy black ink");
+  await expect(page.getByTestId("approval")).toContainText("15% above the market price of $19.99");
+});
+
+test("an outside AI assistant connects over MCP and can only buy through the mandate", async ({ page, request, baseURL }) => {
+  await newMandate(page);
+  await page.getByLabel("Assistant name").fill("E2E Agent");
+  await page.getByRole("button", { name: "Create connection URL" }).click();
+  const url = (await page.getByTestId("connection-url").locator("code").first().textContent())!.trim();
+  expect(url).toMatch(/\/api\/mcp\/mdt_/);
+
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
+  const client = new Client({ name: "e2e-agent", version: "1.0.0" });
+  await client.connect(new StreamableHTTPClientTransport(new URL(url)));
+  await client.callTool({ name: "search_products", arguments: { query: "sponges" } });
+  const paid = (await client.callTool({ name: "buy", arguments: { sku: "sponge-3", qty: 1 } })) as { content: Array<{ text: string }> };
+  expect(paid.content[0]!.text).toMatch(/^Paid \$1\.99/);
+  const blocked = (await client.callTool({ name: "buy", arguments: { sku: "gift-card-50", qty: 1 } })) as { content: Array<{ text: string }> };
+  expect(blocked.content[0]!.text).toMatch(/^Blocked/);
+  await client.close();
+
+  await page.reload();
+  await expect(page.getByTestId("ledger")).toContainText("via E2E Agent");
+
+  // Revoke: the assistant is cut off.
+  await page.getByTestId("connections").getByRole("button", { name: "Revoke" }).click();
+  await expect(page.getByTestId("connections")).toContainText("revoked");
+  const after = await request.post(url, { data: { jsonrpc: "2.0", id: 1, method: "tools/list" } });
+  expect(after.status()).toBe(401);
+  void baseURL;
+});
