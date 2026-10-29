@@ -57,7 +57,8 @@ export function Orders({ orders, busy, act, onCheck }: { orders: OrderView[]; bu
               </div>
               <div className="small">
                 PayPal order <code>{o.id}</code> · {o.carrier} <code>{o.trackingNumber}</code> · expected {day(o.expectedBy)}
-                {o.paypalTracking === "attached" && " · tracking added to PayPal"}
+                {o.paypalTracking === "attached" && " · tracking added to PayPal"} ·{" "}
+                <a href={`/seller?merchant=${encodeURIComponent(o.merchantId)}&order=${encodeURIComponent(o.id)}`}>check as the seller →</a>
               </div>
               <div className="row">
                 <span className={`badge ${cls}`}>{label}</span>

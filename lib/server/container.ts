@@ -16,6 +16,7 @@ import { Fulfilment, type DisputeChannel, type TrackingChannel } from "../fulfil
 import { DEMO_CATALOG, Catalog } from "../merchant/catalog";
 import { CatalogMerchants, DEMO_MERCHANTS, type Merchants } from "../merchant/merchants";
 import { Credentials } from "../ap2/credentials";
+import { checkPayment } from "../ap2/check";
 import { SimulatedDisputes, ToolkitDisputes, ToolkitTracking } from "../paypal/toolkit-fulfilment";
 import { FakeProvider } from "../paypal/fake-provider";
 import type { PaymentProvider } from "../paypal/provider";
@@ -117,6 +118,12 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     disputeChannel: disputes,
     publicKey: signer.publicKey,
     clock,
+    ap2Evidence: async (paypalOrderId) => {
+      const v = await checkPayment({ stores, mandates, credentials, merchants, executor }, paypalOrderId, clock());
+      return v
+        ? { intent_mandate: v.chain.intent, cart_mandate: v.chain.cart, payment_mandate: v.chain.payment, verification: { ok: v.ok, checks: v.checks } }
+        : null;
+    },
   });
   const executor = new Executor({
     provider,

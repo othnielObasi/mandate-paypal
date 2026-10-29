@@ -31,6 +31,8 @@ interface Deps {
   disputeChannel: DisputeChannel;
   publicKey: string;
   clock: () => Date;
+  /** The AP2 credential chain behind a payment, with its verification, for dispute evidence. */
+  ap2Evidence?: (paypalOrderId: string) => Promise<unknown>;
 }
 
 export type OrderView = OrderRecord & { dispute: DisputeRecord | null };
@@ -178,6 +180,7 @@ export class Fulfilment {
       tracking: { carrier: o.carrier, trackingNumber: o.trackingNumber, expectedBy: o.expectedBy, status: o.shipmentStatus, events: o.trackingEvents },
       receipts: linked.map((r) => ({ seq: r.seq, type: r.type, summary: r.summary, createdAt: r.createdAt, hash: r.hash, signature: r.signature })),
       publicKey: this.d.publicKey,
+      ap2: this.d.ap2Evidence ? await this.d.ap2Evidence(o.id) : null,
     };
     const dispute: DisputeRecord = {
       orderId: o.id,
