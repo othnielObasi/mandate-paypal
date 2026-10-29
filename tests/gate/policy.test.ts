@@ -45,6 +45,15 @@ describe("policy schema", () => {
     expect(parsePolicy({ ...valid, expires: "not-a-date" }).ok).toBe(false);
   });
 
+  it("accepts an optional market-price premium between 0 and 200%", () => {
+    expect(parsePolicy({ ...valid, maxPremiumPct: 10 }).ok).toBe(true);
+    expect(parsePolicy({ ...valid, maxPremiumPct: 0 }).ok).toBe(true);
+    expect(parsePolicy({ ...valid, maxPremiumPct: null }).ok).toBe(true);
+    expect(parsePolicy({ ...valid, maxPremiumPct: -1 }).ok).toBe(false);
+    expect(parsePolicy({ ...valid, maxPremiumPct: 201 }).ok).toBe(false);
+    expect(parsePolicy({ ...valid, maxPremiumPct: 2.5 }).ok).toBe(false);
+  });
+
   it("normalises category names to lower case", () => {
     const r = PolicySchema.parse({ ...valid, categories: ["Household", " OFFICE "] });
     expect(r.categories).toEqual(["household", "office"]);

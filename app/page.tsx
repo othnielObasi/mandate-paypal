@@ -9,13 +9,13 @@ import { Ledger } from "./components/Ledger";
 import { Orders, type OrderView } from "./components/Orders";
 import { RulesEditor } from "./components/RulesEditor";
 
-type Mandate = { id: string; status: "active" | "paused" | "revoked"; policy: Policy; rawText: string };
+type Mandate = { id: string; status: "active" | "paused" | "revoked"; policy: Policy; rawText: string; intentMandate?: unknown };
 type Budget = { mandate: Mandate; spentMinor: number; reservedMinor: number; remainingMinor: number };
 type Decision = { outcome: "allow" | "approve" | "block"; rule: string; reason: string };
 type ProposeResult = { status: string; decision?: Decision; approveUrl?: string; error?: string };
 type AgentEvent = { kind: "text"; text: string } | { kind: "tool"; name: string; input: Record<string, unknown>; ok: boolean; result: unknown };
 type Approval = { id: string; summary: string; decision: Decision; expiresAt: string };
-type Health = { provider: string; model: string; signingKey: string };
+type Health = { provider: string; model: string; signingKey: string; market: string };
 
 function Outcome({ r }: { r: ProposeResult }) {
   const map: Record<string, [string, string]> = {
@@ -53,7 +53,7 @@ function summarise(e: Extract<AgentEvent, { kind: "tool" }>): string {
 
 export default function Home() {
   const [health, setHealth] = useState<Health | null>(null);
-  const [text, setText] = useState("Household basics, up to $80 a month, nothing over $25, verified sellers only");
+  const [text, setText] = useState("Household basics, up to $80 a month, nothing over $25, never more than 10% above market price, verified sellers only");
   const [draft, setDraft] = useState<Policy | null>(null);
   const [budget, setBudget] = useState<Budget | null>(null);
   const [task, setTask] = useState("Buy washing-up liquid and sponges");
@@ -176,6 +176,7 @@ export default function Home() {
           <div className="pills">
             <span className="pill">payments: {health.provider === "simulated" ? "simulated (no PayPal keys)" : "PayPal sandbox · Agent Toolkit"}</span>
             <span className="pill">agent: {health.model}</span>
+            <span className="pill">market prices: {health.market === "Channel3" ? "Channel3" : "simulated (no Channel3 key)"}</span>
             <span className="pill">signing key: {health.signingKey}</span>
           </div>
         )}
@@ -218,8 +219,12 @@ export default function Home() {
                 <dd>
                   {usd(p.budget.amountMinor)} per {p.budget.period}
                 </dd>
+                <dt>Market price</dt>
+                <dd>{p.maxPremiumPct === null || p.maxPremiumPct === undefined ? "no limit" : `at most ${p.maxPremiumPct}% above market`}</dd>
                 <dt>Sellers</dt>
                 <dd>{p.sellers.verifiedOnly ? "verified only" : "any"}</dd>
+                <dt>Signed</dt>
+                <dd>{mandate.intentMandate ? "✓ by you (AP2 Intent Mandate)" : "no"}</dd>
                 <dt>Expires</dt>
                 <dd>{p.expires}</dd>
               </dl>

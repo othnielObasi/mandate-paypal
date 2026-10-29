@@ -37,6 +37,8 @@ export const PolicySchema = z
       .strict(),
     overLimit: z.enum(["ask", "block"]),
     expires: isoDate,
+    /** Optional: never pay more than this % above the market reference price. */
+    maxPremiumPct: z.number().int().min(0).max(200).nullable().optional(),
   })
   .strict()
   .refine((p) => p.maxItemMinor <= p.budget.amountMinor, {

@@ -23,11 +23,19 @@ describe("policy form", () => {
       blocked: "shady-shop",
       overLimit: "ask",
       expires: "2027-01-19",
+      maxPremium: "",
     });
   });
 
+  it("edits the market-price premium; blank means no market rule", () => {
+    expect(formToPolicy({ ...policyToForm(policy), maxPremium: "10" }, "USD")).toMatchObject({ ok: true, policy: { maxPremiumPct: 10 } });
+    expect(formToPolicy({ ...policyToForm(policy), maxPremium: " " }, "USD")).toMatchObject({ ok: true, policy: { maxPremiumPct: null } });
+    expect(formToPolicy({ ...policyToForm(policy), maxPremium: "ten" }, "USD")).toMatchObject({ ok: false, error: expect.stringMatching(/market/i) });
+    expect(policyToForm({ ...policy, maxPremiumPct: 15 }).maxPremium).toBe("15");
+  });
+
   it("round-trips", () => {
-    expect(formToPolicy(policyToForm(policy), "USD")).toEqual({ ok: true, policy });
+    expect(formToPolicy(policyToForm(policy), "USD")).toEqual({ ok: true, policy: { ...policy, maxPremiumPct: null } });
   });
 
   it("parses edited dollar amounts to whole cents", () => {

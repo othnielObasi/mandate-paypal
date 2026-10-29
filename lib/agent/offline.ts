@@ -114,13 +114,15 @@ function parsePolicyText(t: string, system: string) {
   budget ??= { amountMinor: 5000, period: "month" };
   cap = Math.min(cap ?? budget.amountMinor, budget.amountMinor);
 
+  const premium = s.match(/(\d{1,3})\s*%\s*(?:above|over)\s*(?:the\s*)?market/);
   return {
+    ...(premium ? { maxPremiumPct: Math.min(200, Number(premium[1])) } : {}),
     categories,
     currency: "USD",
     maxItemMinor: cap,
     budget,
     sellers: { verifiedOnly: !/any seller|unverified/.test(s), blocked: [] },
-    overLimit: /refuse|block anything|never more|hard limit/.test(s) ? "block" : "ask",
+    overLimit: /\brefuse\b|block anything|hard limit|never ask/.test(s) ? "block" : "ask",
     expires,
   };
 }

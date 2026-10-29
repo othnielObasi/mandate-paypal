@@ -13,6 +13,7 @@ const IntentSchema = z.object({
   category: z.string().min(1),
   itemTitle: z.string(),
   origin: z.enum(["agent", "untrusted_instruction"]),
+  marketReferenceMinor: z.number().int().positive().optional(),
 });
 
 const MandateSchema = z.object({
@@ -73,13 +74,22 @@ export function evaluate(mandateIn: Mandate, intentIn: Intent, ctxIn: GateContex
       return block("seller", `${intent.merchantId} is not a verified seller.`);
 
     // Soft limits: ask or block per mandate; a user approval lets them through.
-    const soft = (rule: "item_cap" | "budget", reason: string): Decision | null => {
+    const soft = (rule: "item_cap" | "budget" | "market_price", reason: string): Decision | null => {
       if (ctx.approved) return null;
       return { outcome: p.overLimit === "ask" ? "approve" : "block", rule, reason };
     };
 
     if (intent.amountMinor > p.maxItemMinor) {
       const d = soft("item_cap", `${money(intent.amountMinor)} is over the item limit of ${money(p.maxItemMinor)}.`);
+      if (d) return d;
+    }
+
+    // Integer maths: amount × 100 > reference × (100 + pct) means "more than pct% above market".
+    const pct = p.maxPremiumPct;
+    const ref = intent.marketReferenceMinor;
+    if (pct !== null && pct !== undefined && ref !== undefined && intent.amountMinor * 100 > ref * (100 + pct)) {
+      const over = Math.round((intent.amountMinor / ref - 1) * 100);
+      const d = soft("market_price", `${money(intent.amountMinor)} is ${over}% above the market price of ${money(ref)} (your limit is ${pct}%).`);
       if (d) return d;
     }
 

@@ -76,6 +76,16 @@ describe("OfflinePlanner (runs the demo with no API key)", () => {
     });
   });
 
+  it("understands a market-price limit", async () => {
+    const r = await parseMandate("Household basics, $80 a month, nothing over $25, never more than 10% above market price", new OfflinePlanner(), new Date("2026-10-21T10:00:00Z"));
+    expect(r).toMatchObject({ ok: true, policy: { maxPremiumPct: 10, maxItemMinor: 2500, overLimit: "ask" } });
+  });
+
+  it("only refuses outright when told to", async () => {
+    const r = await parseMandate("Household basics, $80 a month, nothing over $25, refuse anything over the limit", new OfflinePlanner(), new Date("2026-10-21T10:00:00Z"));
+    expect(r).toMatchObject({ ok: true, policy: { overLimit: "block" } });
+  });
+
   it("understands weekly budgets and office supplies", async () => {
     const r = await parseMandate("office supplies, $40 per week", new OfflinePlanner(), new Date("2026-10-21T10:00:00Z"));
     expect(r).toMatchObject({ ok: true, policy: { categories: ["office"], maxItemMinor: 4000, budget: { amountMinor: 4000, period: "week" } } });

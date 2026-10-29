@@ -10,6 +10,7 @@ import { formatMoney, parsePolicy, type Policy } from "../gate/policy";
 import type { ReceiptLog } from "../gate/receipts";
 import type { Decision, Intent, MandateStatus } from "../gate/types";
 import type { Merchants } from "../merchant/merchants";
+import type { MarketQuote, PriceOracle } from "../market/oracle";
 import { OrderSpecSchema, type Executor } from "./executor";
 import type { PaymentStore } from "./spend";
 import type { ApprovalStore, MandateRecord, MandateStore, Proposal } from "./stores";
@@ -36,6 +37,8 @@ interface Deps {
   credentials: Credentials;
   merchants: Merchants;
   credentialStore: CredentialStore;
+  /** Reference prices for the optional market-price rule. */
+  market?: PriceOracle;
 }
 
 const block = (rule: Decision["rule"], reason: string): Extract<ProposeResult, { status: "blocked" }> => ({
@@ -109,6 +112,22 @@ export class Governor {
     return this.run(a.proposal, true);
   }
 
+  /** Market reference for the whole cart (each line's unit reference × qty), or null if any line has none. */
+  private async marketReference(policy: Policy, order: { currency: string; items: Array<{ title: string; qty: number }> }): Promise<(MarketQuote & { lines: number }) | null> {
+    if (policy.maxPremiumPct === null || policy.maxPremiumPct === undefined || !this.d.market) return null;
+    let total = 0;
+    let products = Infinity;
+    let source = "";
+    for (const i of order.items) {
+      const q = await this.d.market.reference({ title: i.title, currency: order.currency });
+      if (!q) return null;
+      total += q.referenceMinor * i.qty;
+      products = Math.min(products, q.products);
+      source = q.source;
+    }
+    return { referenceMinor: total, currency: order.currency, products, source, lines: order.items.length };
+  }
+
   private async logBlock(mandateId: string, r: Extract<ProposeResult, { status: "blocked" }>, what: string) {
     await this.d.receipts.append({ mandateId, type: "decision", summary: `Blocked: ${what}. ${r.decision.reason}`, payload: { decision: r.decision } });
     return r;
@@ -132,6 +151,7 @@ export class Governor {
     if ("error" in q) return this.logBlock(mandate.id, block("invalid_input", `The merchant refused to quote: ${q.error}`), "no quote");
     const order = q.order;
     const amountMinor = orderTotalMinor(order);
+    const market = await this.marketReference(mandate.policy, order);
     const itemTitle = order.items.map((i) => (i.qty > 1 ? `${i.qty} × ${i.title}` : i.title)).join(", ");
     const intent: Intent = {
       id: randomUUID(),
@@ -144,6 +164,7 @@ export class Governor {
       category: q.category,
       itemTitle,
       origin: p.origin,
+      ...(market ? { marketReferenceMinor: market.referenceMinor } : {}),
     };
     const spentMinor = await this.d.payments.spentMinor(mandate.id, mandate.policy.budget.period, now);
     const reservedMinor = (await this.d.permits.reservedMinor(mandate.id, now)) + (await this.d.executor.pendingMinor(mandate.id));
@@ -157,7 +178,7 @@ export class Governor {
       mandateId: mandate.id,
       type: "decision",
       summary: `${label}: ${itemTitle} ${money} from ${q.merchant.name}${p.via ? ` (via ${p.via})` : ""}. ${decision.reason}`,
-      payload: { intent, decision, digest, spentMinor, reservedMinor, cartId: q.cart.contents.id, cartHash },
+      payload: { intent, decision, digest, spentMinor, reservedMinor, cartId: q.cart.contents.id, cartHash, market },
     });
 
     if (decision.outcome === "block") return { status: "blocked", decision };

@@ -17,6 +17,7 @@ import { DEMO_CATALOG, Catalog } from "../merchant/catalog";
 import { CatalogMerchants, DEMO_MERCHANTS, type Merchants } from "../merchant/merchants";
 import { Credentials } from "../ap2/credentials";
 import { checkPayment } from "../ap2/check";
+import { Channel3Oracle, SimulatedMarket, type PriceOracle } from "../market/oracle";
 import { AgentSession } from "../agent/tools";
 import { McpSessions, type McpDeps } from "../mcp/server";
 import { SimulatedDisputes, ToolkitDisputes, ToolkitTracking } from "../paypal/toolkit-fulfilment";
@@ -41,6 +42,7 @@ export interface Container {
   payments: PaymentStore;
   stores: Stores;
   storage: "postgres" | "memory";
+  marketName: string;
   /** Null when webhooks are not configured; the route then refuses every delivery. */
   webhookVerifier: WebhookVerifier | null;
   /** Limits routes that call the model, to protect the hosted demo's API budget. */
@@ -142,6 +144,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
   });
   const catalog = new Catalog(DEMO_CATALOG);
   const credentials = new Credentials(signer);
+  const market: PriceOracle = env.CHANNEL3_API_KEY ? new Channel3Oracle({ apiKey: env.CHANNEL3_API_KEY }) : new SimulatedMarket();
   const merchants = new CatalogMerchants(signer, catalog, DEMO_MERCHANTS);
   const governor = new Governor({
     mandates,
@@ -155,6 +158,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     credentials,
     merchants,
     credentialStore: stores.credentials,
+    market,
   });
 
   const apiKey = env.ANTHROPIC_API_KEY;
@@ -192,6 +196,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     signer,
     newLlm,
     storage: sql ? "postgres" : "memory",
+    marketName: market.name,
     webhookVerifier: opts.webhookVerifier ?? makeVerifier(env),
     limiter: new RateLimiter({
       perIp: { limit: intEnv(env.RATE_LIMIT_PER_MINUTE, 10), windowMs: 60_000 },

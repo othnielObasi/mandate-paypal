@@ -10,6 +10,8 @@ export interface PolicyForm {
   blocked: string;
   overLimit: "ask" | "block";
   expires: string;
+  /** Max % above the market price; blank = no market rule. */
+  maxPremium: string;
 }
 
 const dollars = (minor: number) => (minor / 100).toFixed(2);
@@ -24,6 +26,7 @@ export function policyToForm(p: Policy): PolicyForm {
     blocked: p.sellers.blocked.join(", "),
     overLimit: p.overLimit,
     expires: p.expires,
+    maxPremium: p.maxPremiumPct === null || p.maxPremiumPct === undefined ? "" : String(p.maxPremiumPct),
   };
 }
 
@@ -50,6 +53,8 @@ export function formToPolicy(f: PolicyForm, currency: Currency): { ok: true; pol
   if (amountMinor === null) return { ok: false, error: "The budget must be an amount like 80 or 80.00." };
   if (maxItemMinor > amountMinor) return { ok: false, error: "The per-item limit can't be more than the budget." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(f.expires)) return { ok: false, error: "Pick an expiry date." };
+  const premium = f.maxPremium.trim().replace(/%$/, "");
+  if (premium && !(/^\d{1,3}$/.test(premium) && Number(premium) <= 200)) return { ok: false, error: "The market-price limit must be a whole percentage from 0 to 200, or blank." };
   return {
     ok: true,
     policy: {
@@ -60,6 +65,7 @@ export function formToPolicy(f: PolicyForm, currency: Currency): { ok: true; pol
       sellers: { verifiedOnly: f.verifiedOnly, blocked: list(f.blocked) },
       overLimit: f.overLimit,
       expires: f.expires,
+      maxPremiumPct: premium ? Number(premium) : null,
     },
   };
 }

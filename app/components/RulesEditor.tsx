@@ -48,6 +48,10 @@ export function RulesEditor({ initial, busy, onSave, onCancel }: { initial: Poli
           </select>
         </label>
         <label>
+          Max above market (%)
+          <input type="text" inputMode="numeric" value={f.maxPremium} placeholder="no limit" onChange={(e) => set("maxPremium", e.target.value)} />
+        </label>
+        <label>
           Expires
           <input type="date" value={f.expires} onChange={(e) => set("expires", e.target.value)} />
         </label>

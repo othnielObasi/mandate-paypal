@@ -16,6 +16,7 @@ import { mandateHash, paymentFingerprint } from "@/lib/ap2/mandates";
 import { CatalogMerchants, DEMO_MERCHANTS } from "@/lib/merchant/merchants";
 import { Catalog, DEMO_CATALOG } from "@/lib/merchant/catalog";
 import { EchoMerchants } from "../helpers/echo-merchants";
+import type { PriceOracle } from "@/lib/market/oracle";
 
 const policy: Policy = {
   categories: ["household"],
@@ -27,7 +28,7 @@ const policy: Policy = {
   expires: "2026-12-31",
 };
 
-function build(kind: "catalog" | "echo" = "catalog") {
+function build(kind: "catalog" | "echo" = "catalog", market?: PriceOracle) {
   const now = new Date("2026-10-29T10:00:00Z");
   const clock = () => now;
   const root = generateSigner();
@@ -40,8 +41,8 @@ function build(kind: "catalog" | "echo" = "catalog") {
   const credentials = new Credentials(root);
   const credentialStore = new MemoryCredentialStore();
   const merchants = kind === "catalog" ? new CatalogMerchants(root, new Catalog(DEMO_CATALOG), DEMO_MERCHANTS) : new EchoMerchants(root);
-  const governor = new Governor({ mandates, approvals: new MemoryApprovalStore(), permits, payments, receipts, executor, signer: root, clock, credentials, merchants, credentialStore });
-  return { governor, mandates, credentials, credentialStore, merchants, provider, now, root };
+  const governor = new Governor({ mandates, approvals: new MemoryApprovalStore(), permits, payments, receipts, executor, signer: root, clock, credentials, merchants, credentialStore, market });
+  return { governor, mandates, credentials, credentialStore, merchants, provider, now, root, receipts };
 }
 
 const prop = (mandateId: string, sku: string, merchantId = "acme-supplies", over: Record<string, unknown> = {}) => ({
@@ -123,5 +124,44 @@ describe("governor with AP2-style credentials", () => {
 
   it("takes the category from the merchant's catalogue", async () => {
     expect(await env.governor.propose(prop(mandateId, "printer-paper", "office-hub", { category: "household" }))).toMatchObject({ status: "blocked", decision: { rule: "category" } });
+  });
+});
+
+describe("governor: market-price rule", () => {
+  const ref = (referenceMinor: number | null): PriceOracle => ({
+    name: "stub",
+    reference: async () => (referenceMinor === null ? null : { referenceMinor, currency: "USD", products: 6, source: "stub" }),
+  });
+
+  it("asks the user when the merchant's price is too far above the market, and records the market data", async () => {
+    const env = build("catalog", ref(300)); // washing-up liquid is $4.50; market says $3.00
+    const m = await env.governor.createMandate({ userId: "u1", policy: { ...policy, maxPremiumPct: 10 }, rawText: "" });
+    const r = await env.governor.propose(prop(m.id, "wul-500"));
+    expect(r).toMatchObject({ status: "pending_approval", decision: { rule: "market_price" } });
+    const d = (await env.receipts.list(m.id)).find((x) => x.type === "decision")!;
+    expect(d.payload).toMatchObject({ market: { referenceMinor: 300, source: "stub", products: 6 } });
+  });
+
+  it("scales the market reference by quantity", async () => {
+    const env = build("catalog", ref(440));
+    const m = await env.governor.createMandate({ userId: "u1", policy: { ...policy, maxPremiumPct: 10 }, rawText: "" });
+    const r = await env.governor.propose({ ...prop(m.id, "wul-500"), order: { mandateId: m.id, merchantId: "acme-supplies", currency: "USD", items: [{ sku: "wul-500", title: "x", unitMinor: 1, qty: 3 }] } });
+    expect(r.status).toBe("paid"); // 3 × $4.50 = $13.50 vs 3 × $4.40 market: +2%
+  });
+
+  it("pays normally when there is no market data, and says so in the record", async () => {
+    const env = build("catalog", ref(null));
+    const m = await env.governor.createMandate({ userId: "u1", policy: { ...policy, maxPremiumPct: 10 }, rawText: "" });
+    expect((await env.governor.propose(prop(m.id, "wul-500"))).status).toBe("paid");
+    const d = (await env.receipts.list(m.id)).find((x) => x.type === "decision")!;
+    expect(d.payload).toMatchObject({ market: null });
+  });
+
+  it("does not look up prices when the mandate has no market rule", async () => {
+    let calls = 0;
+    const env = build("catalog", { name: "count", reference: async () => (calls++, null) });
+    const m = await env.governor.createMandate({ userId: "u1", policy, rawText: "" });
+    await env.governor.propose(prop(m.id, "wul-500"));
+    expect(calls).toBe(0);
   });
 });

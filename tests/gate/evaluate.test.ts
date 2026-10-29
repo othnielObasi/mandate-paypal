@@ -107,6 +107,34 @@ describe("policy gate: decisions", () => {
   });
 });
 
+describe("policy gate: market-price rule", () => {
+  const withRule: Mandate = { ...mandate, policy: { ...policy, maxPremiumPct: 10 } };
+
+  it("allows a price up to the allowed premium over the market reference", () => {
+    expect(evaluate(withRule, { ...intent, amountMinor: 440, marketReferenceMinor: 400 }, ctx).outcome).toBe("allow"); // exactly +10%
+  });
+
+  it("asks above the allowed premium, and says by how much", () => {
+    const d = evaluate(withRule, { ...intent, amountMinor: 460, marketReferenceMinor: 400 }, ctx);
+    expect(d).toMatchObject({ outcome: "approve", rule: "market_price" });
+    expect(d.reason).toMatch(/15% above the market price of £4\.00/);
+  });
+
+  it("blocks above the premium when the mandate refuses rather than asks", () => {
+    const strict: Mandate = { ...withRule, policy: { ...withRule.policy, overLimit: "block" } };
+    expect(evaluate(strict, { ...intent, amountMinor: 460, marketReferenceMinor: 400 }, ctx)).toMatchObject({ outcome: "block", rule: "market_price" });
+  });
+
+  it("does not apply without market data, or when the mandate has no market rule", () => {
+    expect(evaluate(withRule, { ...intent, amountMinor: 460 }, ctx).outcome).toBe("allow");
+    expect(evaluate(mandate, { ...intent, amountMinor: 460, marketReferenceMinor: 400 }, ctx).outcome).toBe("allow");
+  });
+
+  it("a user approval lets an above-market purchase through", () => {
+    expect(evaluate(withRule, { ...intent, amountMinor: 460, marketReferenceMinor: 400 }, { ...ctx, approved: true }).outcome).toBe("allow");
+  });
+});
+
 describe("policy gate: fails closed", () => {
   it("blocks non-positive, fractional or non-finite amounts", () => {
     for (const amountMinor of [0, -100, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {

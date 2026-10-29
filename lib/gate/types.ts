@@ -28,6 +28,8 @@ export interface Intent {
   category: string;
   itemTitle: string;
   origin: IntentOrigin;
+  /** Market reference for the same items and quantities, when known. */
+  marketReferenceMinor?: number;
 }
 
 export interface GateContext {
@@ -53,6 +55,7 @@ export type RuleId =
   | "seller"
   | "item_cap"
   | "budget"
+  | "market_price"
   | "credentials"
   | "gate_error";
 

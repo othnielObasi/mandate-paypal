@@ -162,6 +162,23 @@ describe("API: the three trust moments", () => {
   });
 });
 
+describe("API: market-price rule (simulated market without a Channel3 key)", () => {
+  it("asks the user when the merchant charges well above the market", async () => {
+    const res = await createMandate(post("/api/mandates", { text: "Office supplies, $100 a month, nothing over $30, never more than 10% above market price" }));
+    const m = (await res.json()) as { id: string; policy: { maxPremiumPct: number } };
+    expect(m.policy.maxPremiumPct).toBe(10);
+    const r = await run(m.id, "Buy black ink");
+    expect(purchases(r)[0]).toMatchObject({ status: "pending_approval", decision: { rule: "market_price" } });
+    expect((purchases(r)[0] as unknown as { decision: { reason: string } }).decision.reason).toMatch(/15% above the market price of \$19\.99/);
+    expect(await (await health()).json()).toMatchObject({ market: "simulated market" });
+  });
+
+  it("pays when the price is within the allowed premium", async () => {
+    const m = (await (await createMandate(post("/api/mandates", { text: "Office supplies, $100 a month, nothing over $30, never more than 10% above market price" }))).json()) as { id: string };
+    expect(purchases(await run(m.id, "Buy printer paper"))[0]).toMatchObject({ status: "paid" });
+  });
+});
+
 describe("API: receipts", () => {
   it("lists a mandate's receipts and verifies the stored chain", async () => {
     const id = await newMandate();
