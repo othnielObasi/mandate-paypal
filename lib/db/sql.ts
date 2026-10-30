@@ -38,6 +38,8 @@ CREATE INDEX IF NOT EXISTS receipts_mandate ON receipts (mandate_id, seq);
 CREATE INDEX IF NOT EXISTS orders_capture ON orders (capture_id);
 CREATE INDEX IF NOT EXISTS payments_mandate ON payments (mandate_id, captured_at);
 CREATE INDEX IF NOT EXISTS permits_mandate ON permits (mandate_id) WHERE used_at IS NULL;
+ALTER TABLE permits ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS permits_open ON permits (mandate_id) WHERE closed_at IS NULL
 `;
 
 /** Runs the idempotent schema once, then every query waits for it. */

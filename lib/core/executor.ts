@@ -4,6 +4,7 @@ import { verifyPermit, type PermitStore } from "../gate/permits";
 import { CURRENCIES, formatMoney } from "../gate/policy";
 import type { ReceiptLog } from "../gate/receipts";
 import type { PaymentProvider, ReturnUrls } from "../paypal/provider";
+import { ledgerOf, type BudgetLedger } from "./ledger";
 import { MemoryPendingStore, type PendingStore } from "./pending";
 import type { PaymentStore } from "./spend";
 
@@ -70,6 +71,8 @@ interface Deps {
   onPaid?: (p: PaidOrder) => Promise<void>;
   /** Orders waiting for buyer approval in PayPal. Defaults to memory. */
   pending?: PendingStore;
+  /** Records a payment and releases its permit together. Defaults to the two stores. */
+  ledger?: BudgetLedger;
 }
 
 /**
@@ -80,8 +83,10 @@ interface Deps {
 export class Executor {
   private pending: PendingStore;
 
+  private ledger: BudgetLedger;
   constructor(private d: Deps) {
     this.pending = d.pending ?? new MemoryPendingStore();
+    this.ledger = d.ledger ?? ledgerOf(d.payments, d.permits);
   }
 
   get providerName() {
@@ -120,8 +125,10 @@ export class Executor {
     if (!(await this.d.permits.consume(permit.id))) return refuse("permit_used");
 
     const money = formatMoney(total, order.currency);
+    let paypalOrderId: string | null = null;
     try {
       const created = await this.d.provider.createOrder(order, this.d.urls, { note: meta.note });
+      paypalOrderId = created.paypalOrderId;
       if (created.status === "PAYER_ACTION_REQUIRED") {
         await this.pending.put(created.paypalOrderId, { mandateId: order.mandateId, amountMinor: total, currency: order.currency, order, permitId: permit.id, paymentMandateId: meta.paymentMandateId });
         await this.d.receipts.append({
@@ -138,11 +145,14 @@ export class Executor {
       return { status: "paid", paypalOrderId: captured.paypalOrderId, captureId: captured.captureId, amountMinor: total };
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
+      // No PayPal order means no money can have moved: release the reservation. If an order exists,
+      // the capture may still have happened, so the money stays held until it is reconciled.
+      if (!paypalOrderId) await this.d.permits.close(permit.id);
       await this.d.receipts.append({
         mandateId: order.mandateId,
         type: "payment_failed",
-        summary: `Payment of ${money} failed: ${error}`.slice(0, 300),
-        payload: { permitId: permit.id, error },
+        summary: `Payment of ${money} failed: ${error}${paypalOrderId ? " (amount held until PayPal order " + paypalOrderId + " is reconciled)" : ""}`.slice(0, 300),
+        payload: { permitId: permit.id, error, paypalOrderId, held: !!paypalOrderId },
       });
       return { status: "failed", error };
     }
@@ -168,6 +178,7 @@ export class Executor {
   async cancelBuyerApproval(paypalOrderId: string): Promise<boolean> {
     const p = await this.pending.claim(paypalOrderId);
     if (!p) return false;
+    if (p.permitId) await this.d.permits.close(p.permitId);
     await this.d.receipts.append({ mandateId: p.mandateId, type: "payment_failed", summary: "Buyer cancelled in PayPal", payload: { paypalOrderId } });
     return true;
   }
@@ -191,7 +202,8 @@ export class Executor {
     merchantId: string | null,
   ) {
     const capturedAt = this.d.clock().toISOString();
-    await this.d.payments.record({ mandateId, amountMinor, capturedAt, paypalOrderId });
+    // Counted as spent and no longer held as reserved, in one step.
+    await this.ledger.settle({ mandateId, amountMinor, capturedAt, paypalOrderId }, permitId);
     await this.d.receipts.append({
       mandateId,
       type: "payment",

@@ -91,6 +91,10 @@ function contract(name: string, setup: () => Promise<{ fresh: () => Promise<Stor
       const wins = await Promise.all(Array.from({ length: 20 }, () => s.permits.consume(p.id)));
       expect(wins.filter(Boolean)).toHaveLength(1);
       expect(await s.permits.consume("nope")).toBe(false);
+      // A used permit still holds its money until its payment settles or is released.
+      expect(await s.permits.reservedMinor("m1", now)).toBe(p.amountMinor + 200);
+      await s.permits.close(p.id);
+      await s.permits.close(p.id);
       expect(await s.permits.reservedMinor("m1", now)).toBe(200);
       await expect(s.permits.save(p)).rejects.toThrow();
     });
@@ -220,6 +224,19 @@ function contract(name: string, setup: () => Promise<{ fresh: () => Promise<Stor
       expect(await s.passkeys.get("cred-1")).toEqual({ ...k, label: "Laptop" });
       expect(await s.passkeys.get("nope")).toBeUndefined();
       expect((await s.passkeys.listForUser("u1")).map((x) => x.credentialId)).toEqual(["cred-1"]);
+    });
+
+    it("budget ledger: one view of spent and held money; settling moves it once, even past the permit's expiry", async () => {
+      const signer = generateSigner();
+      const p = issuePermit({ intentId: "i", mandateId: "m1", digest: "d".repeat(64), amountMinor: 300, currency: "USD", now }, signer);
+      await s.permits.save(p);
+      await s.permits.consume(p.id);
+      const later = new Date(now.getTime() + 60 * 60_000); // payment still in flight after the permit expired
+      expect(await s.ledger.committed("m1", "month", later)).toEqual({ spentMinor: 0, reservedMinor: 300 });
+      await s.ledger.settle({ mandateId: "m1", amountMinor: 300, capturedAt: now.toISOString(), paypalOrderId: "O-1" }, p.id);
+      expect(await s.ledger.committed("m1", "month", later)).toEqual({ spentMinor: 300, reservedMinor: 0 });
+      await s.ledger.settle({ mandateId: "m1", amountMinor: 300, capturedAt: now.toISOString(), paypalOrderId: "O-1" }, p.id);
+      expect(await s.ledger.committed("m1", "month", later)).toEqual({ spentMinor: 300, reservedMinor: 0 });
     });
 
     it("webhook events: each id is accepted once", async () => {

@@ -100,6 +100,71 @@ describe("executor: the only path to PayPal", () => {
     expect(provider.calls.create).toBe(1);
   });
 
+  it("holds the money while a payment is in flight, and counts it once when settled", async () => {
+    const p = permitFor(order);
+    await permits.save(p);
+    expect(await permits.reservedMinor("m1", now)).toBe(450);
+    expect((await executor.pay(p.id, order)).status).toBe("paid");
+    expect(await permits.reservedMinor("m1", now)).toBe(0);
+    expect(await payments.spentMinor("m1", "month", now)).toBe(450);
+  });
+
+  it("releases the reservation when PayPal never created an order", async () => {
+    const p = permitFor(order);
+    await permits.save(p);
+    provider.failNext = true;
+    expect((await executor.pay(p.id, order)).status).toBe("failed");
+    expect(await permits.reservedMinor("m1", now)).toBe(0);
+  });
+
+  it("keeps the reservation when the order exists but capture failed (money may have moved)", async () => {
+    const pa = new FakeProvider("payer_action");
+    const ex = new Executor({ provider: pa, permits, payments, receipts, publicKey: signer.publicKey, clock: () => now, urls });
+    const p = permitFor(order);
+    await permits.save(p);
+    const r = (await ex.pay(p.id, order)) as { paypalOrderId: string };
+    expect(await permits.reservedMinor("m1", now)).toBe(450); // waiting for the buyer: still held
+    pa.captureOrder = async () => {
+      throw new Error("timeout");
+    };
+    expect((await ex.completeBuyerApproval(r.paypalOrderId)).status).toBe("failed");
+    expect(await permits.reservedMinor("m1", now)).toBe(450);
+  });
+
+  it("keeps holding the money while the buyer takes longer than the permit's lifetime", async () => {
+    const pa = new FakeProvider("payer_action");
+    const ex = new Executor({ provider: pa, permits, payments, receipts, publicKey: signer.publicKey, clock: () => now, urls });
+    const p = permitFor(order);
+    await permits.save(p);
+    await ex.pay(p.id, order);
+    expect(await permits.reservedMinor("m1", new Date(now.getTime() + 60 * 60_000))).toBe(450);
+  });
+
+  it("keeps the reservation when PayPal created the order but the capture call failed", async () => {
+    const created = new FakeProvider("auto_complete");
+    created.createOrder = async () => ((created.calls.create += 1), { paypalOrderId: "ORDER-1", status: "CREATED" as const });
+    created.captureOrder = async () => {
+      throw new Error("timeout");
+    };
+    const ex = new Executor({ provider: created, permits, payments, receipts, publicKey: signer.publicKey, clock: () => now, urls });
+    const p = permitFor(order);
+    await permits.save(p);
+    expect((await ex.pay(p.id, order)).status).toBe("failed");
+    expect(await permits.reservedMinor("m1", now)).toBe(450);
+    const last = (await receipts.list()).at(-1)!;
+    expect(last.summary).toMatch(/held until PayPal order ORDER-1 is reconciled/);
+  });
+
+  it("releases the reservation when the buyer cancels in PayPal", async () => {
+    const pa = new FakeProvider("payer_action");
+    const ex = new Executor({ provider: pa, permits, payments, receipts, publicKey: signer.publicKey, clock: () => now, urls });
+    const p = permitFor(order);
+    await permits.save(p);
+    const r = (await ex.pay(p.id, order)) as { paypalOrderId: string };
+    expect(await ex.cancelBuyerApproval(r.paypalOrderId)).toBe(true);
+    expect(await permits.reservedMinor("m1", now)).toBe(0);
+  });
+
   it("pays once when the same permit is raced", async () => {
     const p = permitFor(order);
     await permits.save(p);

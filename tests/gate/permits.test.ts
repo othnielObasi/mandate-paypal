@@ -128,7 +128,7 @@ describe("permit store: single use", () => {
     expect(results.filter(Boolean)).toHaveLength(1);
   });
 
-  it("reports money reserved by unused, unexpired permits for a mandate", async () => {
+  it("reports money held by unused, unexpired permits and by payments still in flight", async () => {
     const store = new MemoryPermitStore();
     const s = generateSigner();
     const mk = (amountMinor: number, mandateId = "m1", at = now) =>
@@ -141,6 +141,9 @@ describe("permit store: single use", () => {
     await store.save(expired);
     await store.save(mk(999, "m2"));
     await store.consume(used.id);
+    // 100 + 200 unused, plus 300 used but not yet settled; the expired one and m2's are not counted.
+    expect(await store.reservedMinor("m1", now)).toBe(600);
+    await store.close(used.id);
     expect(await store.reservedMinor("m1", now)).toBe(300);
   });
 });

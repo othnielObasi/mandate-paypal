@@ -3,6 +3,8 @@ import type { Credentials } from "../ap2/credentials";
 import { mandateHash, paymentFingerprint } from "../ap2/mandates";
 import type { CredentialStore } from "../ap2/store";
 import { publicJwk } from "../ap2v2/es256";
+import { MemoryLock, type KeyedLock } from "./lock";
+import { ledgerOf, type BudgetLedger } from "./ledger";
 import { passkeyOwner, type PasskeyStore } from "../passkey/store";
 import { approvalChallenge, clientOrigin, verifyAssertion, type ApprovalCart, type PasskeyApproval, type PasskeyAssertion } from "../passkey/webauthn";
 import { checkoutReceipt, checkPaymentConstraints, closeApproved, closeAutonomous, merchantCheckout, openMandatesFor, paymentReceipt } from "../ap2v2/mandates";
@@ -11,7 +13,7 @@ import { verifyChain } from "../ap2v2/sdjwt";
 import { orderDigest, orderTotalMinor } from "../gate/canonical";
 import { evaluate } from "../gate/evaluate";
 import type { Signer } from "../gate/keys";
-import { issuePermit, type PermitStore } from "../gate/permits";
+import { issuePermit, type Permit, type PermitStore } from "../gate/permits";
 import { formatMoney, parsePolicy, type Policy } from "../gate/policy";
 import type { ReceiptLog } from "../gate/receipts";
 import type { Decision, Intent, MandateStatus } from "../gate/types";
@@ -49,6 +51,10 @@ interface Deps {
   passkeys?: PasskeyStore;
   /** Origins a WebAuthn ceremony may come from (the app's own). */
   origins?: string[];
+  /** Consistent spent/reserved reads. Defaults to the two stores. */
+  ledger?: BudgetLedger;
+  /** Serialises budget decisions per mandate (Postgres advisory lock when several processes share a database). */
+  lock?: KeyedLock;
 }
 
 /** The cart a passkey approval covers, as the merchant will sign it. */
@@ -73,7 +79,12 @@ const block = (rule: Decision["rule"], reason: string): Extract<ProposeResult, {
  * permit → executor. Every step is logged.
  */
 export class Governor {
-  constructor(private d: Deps) {}
+  private lock: KeyedLock;
+  private ledger: BudgetLedger;
+  constructor(private d: Deps) {
+    this.lock = d.lock ?? new MemoryLock();
+    this.ledger = d.ledger ?? ledgerOf(d.payments, d.permits);
+  }
 
   async createMandate(input: { userId: string; policy: Policy; rawText: string }): Promise<MandateRecord> {
     const parsed = parsePolicy(input.policy);
@@ -110,8 +121,7 @@ export class Governor {
     const m = await this.d.mandates.get(mandateId);
     if (!m) return undefined;
     const now = this.d.clock();
-    const spentMinor = await this.d.payments.spentMinor(mandateId, m.policy.budget.period, now);
-    const reservedMinor = (await this.d.permits.reservedMinor(mandateId, now)) + (await this.d.executor.pendingMinor(mandateId));
+    const { spentMinor, reservedMinor } = await this.ledger.committed(mandateId, m.policy.budget.period, now);
     return { mandate: m, spentMinor, reservedMinor, remainingMinor: Math.max(0, m.policy.budget.amountMinor - spentMinor - reservedMinor) };
   }
 
@@ -220,84 +230,92 @@ export class Governor {
       origin: p.origin,
       ...(market ? { marketReferenceMinor: market.referenceMinor } : {}),
     };
-    const spentMinor = await this.d.payments.spentMinor(mandate.id, mandate.policy.budget.period, now);
-    const reservedMinor = (await this.d.permits.reservedMinor(mandate.id, now)) + (await this.d.executor.pendingMinor(mandate.id));
-    const decision = evaluate(mandate, intent, { now, spentMinor, reservedMinor, approved });
-    const digest = orderDigest(order);
-    const money = formatMoney(amountMinor, order.currency);
-    const label = { allow: "Allowed", approve: "Needs approval", block: "Blocked" }[decision.outcome];
-    const cartHash = mandateHash(q.cart.contents);
+    // Budget check through money reservation happens under a per-mandate lock: agents buying
+    // at the same moment are decided one after another, each seeing the others' reservations.
+    const step = await this.lock.run(mandate.id, async (): Promise<{ early: ProposeResult } | { permit: Permit; pmId: string; fingerprint: string; decision: Decision }> => {
+      // Read the clock again: payments that settled while this purchase waited for the lock must count.
+      const at = this.d.clock();
+      const { spentMinor, reservedMinor } = await this.ledger.committed(mandate.id, mandate.policy.budget.period, at);
+      const decision = evaluate(mandate, intent, { now, spentMinor, reservedMinor, approved });
+      const digest = orderDigest(order);
+      const money = formatMoney(amountMinor, order.currency);
+      const label = { allow: "Allowed", approve: "Needs approval", block: "Blocked" }[decision.outcome];
+      const cartHash = mandateHash(q.cart.contents);
 
-    await this.d.receipts.append({
-      mandateId: mandate.id,
-      type: "decision",
-      summary: `${label}: ${itemTitle} ${money} from ${q.merchant.name}${p.via ? ` (via ${p.via})` : ""}. ${decision.reason}`,
-      payload: { intent, decision, digest, spentMinor, reservedMinor, cartId: q.cart.contents.id, cartHash, market },
-    });
-
-    if (decision.outcome === "block") return { status: "blocked", decision };
-
-    if (decision.outcome === "approve") {
-      const id = randomUUID();
-      const summary = `${itemTitle} for ${money} from ${q.merchant.name}`;
-      await this.d.approvals.save({
-        id,
-        mandateId: mandate.id,
-        proposal: p,
-        decision,
-        summary,
-        createdAt: now.toISOString(),
-        expiresAt: new Date(now.getTime() + APPROVAL_TTL_MS).toISOString(),
-        status: "pending",
-      });
       await this.d.receipts.append({
         mandateId: mandate.id,
-        type: "approval_requested",
-        summary: `Asked you to approve ${summary}: ${decision.reason}`,
-        payload: { approvalId: id, digest },
+        type: "decision",
+        summary: `${label}: ${itemTitle} ${money} from ${q.merchant.name}${p.via ? ` (via ${p.via})` : ""}. ${decision.reason}`,
+        payload: { intent, decision, digest, spentMinor, reservedMinor, cartId: q.cart.contents.id, cartHash, market },
       });
-      return { status: "pending_approval", decision, approvalId: id };
-    }
 
-    // Human-present when the user approved this cart; otherwise the gateway attests it is within the signed intent.
-    const mode = approved ? "human_present" : "human_not_present";
-    const pm = this.d.credentials.signPayment(mandate.intentMandate!, q.cart, mode, mandate.userId, now);
-    const pmId = pm.payment_mandate_contents.payment_mandate_id;
-    const fingerprint = paymentFingerprint(pm);
+      if (decision.outcome === "block") return { early: { status: "blocked", decision } };
 
-    // AP2 v0.2: the merchant signs the checkout; the agent (or the user, when they approved) closes the mandates.
-    let ap2: Ap2PurchaseRecord | undefined;
-    if (mandate.ap2) {
-      const keys = this.d.credentials.ap2;
-      const s = Math.floor(now.getTime() / 1000);
-      const checkout = merchantCheckout(
-        { id: q.cart.contents.id, merchant: { id: order.merchantId, name: q.merchant.name }, currency: order.currency, items: order.items.map((i) => ({ sku: i.sku, title: i.title, unitMinor: i.unitMinor, qty: i.qty })) },
-        keys.merchant(order.merchantId),
-      );
-      const payee = { id: order.merchantId, name: q.merchant.name };
-      const prior = (await this.d.credentialStore.list(mandate.id)).filter((r) => r.ap2?.mode === "human_not_present");
-      const context = { totalAmount: spentMinor + reservedMinor, totalUses: prior.length };
-      const closed = approved
-        ? closeApproved(checkout, { userKey: keys.user(mandate.userId), payee, now: s })
-        : closeAutonomous({ checkoutOpen: { token: mandate.ap2.checkoutOpen }, paymentOpen: { token: mandate.ap2.paymentOpen } }, checkout, { agentKey: keys.agent, payee, now: s, nonce: intent.id });
-      if (!approved) {
-        // Defence in depth: the payment must satisfy the user's AP2 open mandate, checked as a verifier would.
-        const [openPayment, closedPayment] = verifyChain(closed.paymentChain, () => publicJwk(keys.provider), { now: s });
-        const violations = checkPaymentConstraints(openPayment!, closedPayment!, { openCheckoutHash: mandate.ap2.openCheckoutHash, context });
-        if (violations.length) return this.logBlock(mandate.id, block("credentials", `The purchase is outside your signed AP2 mandate: ${violations.join("; ")}`), "AP2 mandate check");
+      if (decision.outcome === "approve") {
+        const id = randomUUID();
+        const summary = `${itemTitle} for ${money} from ${q.merchant.name}`;
+        await this.d.approvals.save({
+          id,
+          mandateId: mandate.id,
+          proposal: p,
+          decision,
+          summary,
+          createdAt: now.toISOString(),
+          expiresAt: new Date(now.getTime() + APPROVAL_TTL_MS).toISOString(),
+          status: "pending",
+        });
+        await this.d.receipts.append({
+          mandateId: mandate.id,
+          type: "approval_requested",
+          summary: `Asked you to approve ${summary}: ${decision.reason}`,
+          payload: { approvalId: id, digest },
+        });
+        return { early: { status: "pending_approval", decision, approvalId: id } };
       }
-      ap2 = { spec: "ap2/0.2", mode: closed.mode, checkoutJwt: checkout.jwt, checkoutChain: closed.checkoutChain, paymentChain: closed.paymentChain, context, ...(passkey ? { passkey } : {}) };
-    }
-    await this.d.credentialStore.put({ paymentMandateId: pmId, mandateId: mandate.id, paypalOrderId: null, cart: q.cart, payment: pm, fingerprint, createdAt: now.toISOString(), ...(ap2 ? { ap2 } : {}) });
 
-    const permit = issuePermit({ intentId: intent.id, mandateId: mandate.id, digest, amountMinor, currency: order.currency, now }, this.d.signer);
-    await this.d.permits.save(permit);
-    await this.d.receipts.append({
-      mandateId: mandate.id,
-      type: "permit",
-      summary: `Issued single-use permit for ${money} and ${mode === "human_present" ? "your signed" : "an attested"} payment mandate ${pmId}`,
-      payload: { permitId: permit.id, digest, expiresAt: permit.expiresAt, paymentMandateId: pmId, mode, cartHash },
+      // Human-present when the user approved this cart; otherwise the gateway attests it is within the signed intent.
+      const mode = approved ? "human_present" : "human_not_present";
+      const pm = this.d.credentials.signPayment(mandate.intentMandate!, q.cart, mode, mandate.userId, now);
+      const pmId = pm.payment_mandate_contents.payment_mandate_id;
+      const fingerprint = paymentFingerprint(pm);
+
+      // AP2 v0.2: the merchant signs the checkout; the agent (or the user, when they approved) closes the mandates.
+      let ap2: Ap2PurchaseRecord | undefined;
+      if (mandate.ap2) {
+        const keys = this.d.credentials.ap2;
+        const s = Math.floor(now.getTime() / 1000);
+        const checkout = merchantCheckout(
+          { id: q.cart.contents.id, merchant: { id: order.merchantId, name: q.merchant.name }, currency: order.currency, items: order.items.map((i) => ({ sku: i.sku, title: i.title, unitMinor: i.unitMinor, qty: i.qty })) },
+          keys.merchant(order.merchantId),
+        );
+        const payee = { id: order.merchantId, name: q.merchant.name };
+        const prior = (await this.d.credentialStore.list(mandate.id)).filter((r) => r.ap2?.mode === "human_not_present");
+        const context = { totalAmount: spentMinor + reservedMinor, totalUses: prior.length };
+        const closed = approved
+          ? closeApproved(checkout, { userKey: keys.user(mandate.userId), payee, now: s })
+          : closeAutonomous({ checkoutOpen: { token: mandate.ap2.checkoutOpen }, paymentOpen: { token: mandate.ap2.paymentOpen } }, checkout, { agentKey: keys.agent, payee, now: s, nonce: intent.id });
+        if (!approved) {
+          // Defence in depth: the payment must satisfy the user's AP2 open mandate, checked as a verifier would.
+          const [openPayment, closedPayment] = verifyChain(closed.paymentChain, () => publicJwk(keys.provider), { now: s });
+          const violations = checkPaymentConstraints(openPayment!, closedPayment!, { openCheckoutHash: mandate.ap2.openCheckoutHash, context });
+          if (violations.length) return { early: await this.logBlock(mandate.id, block("credentials", `The purchase is outside your signed AP2 mandate: ${violations.join("; ")}`), "AP2 mandate check") };
+        }
+        ap2 = { spec: "ap2/0.2", mode: closed.mode, checkoutJwt: checkout.jwt, checkoutChain: closed.checkoutChain, paymentChain: closed.paymentChain, context, ...(passkey ? { passkey } : {}) };
+      }
+      await this.d.credentialStore.put({ paymentMandateId: pmId, mandateId: mandate.id, paypalOrderId: null, cart: q.cart, payment: pm, fingerprint, createdAt: now.toISOString(), ...(ap2 ? { ap2 } : {}) });
+
+      const permit = issuePermit({ intentId: intent.id, mandateId: mandate.id, digest, amountMinor, currency: order.currency, now }, this.d.signer);
+      await this.d.permits.save(permit);
+      await this.d.receipts.append({
+        mandateId: mandate.id,
+        type: "permit",
+        summary: `Issued single-use permit for ${money} and ${mode === "human_present" ? "your signed" : "an attested"} payment mandate ${pmId}`,
+        payload: { permitId: permit.id, digest, expiresAt: permit.expiresAt, paymentMandateId: pmId, mode, cartHash },
+      });
+      return { permit, pmId, fingerprint, decision };
     });
+    if ("early" in step) return step.early;
+    const { permit, pmId, fingerprint, decision } = step;
 
     const paid = await this.d.executor.pay(permit.id, order, { note: fingerprint, paymentMandateId: pmId });
     if (paid.status === "paid" || paid.status === "awaiting_buyer") await this.d.credentialStore.attachOrder(pmId, paid.paypalOrderId);

@@ -72,6 +72,9 @@ export class MemoryReceiptStore implements ReceiptStore {
 }
 
 /** Append-only, hash-chained, signed log. Appends are serialised so the chain never forks. */
+/** Another writer (another server process) took this position in the chain first. */
+export class ReceiptConflict extends Error {}
+
 export class ReceiptLog {
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -87,6 +90,23 @@ export class ReceiptLog {
 
   append(input: AppendInput): Promise<Receipt> {
     const run = async () => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await this.write(input);
+        } catch (e) {
+          // Re-read the head and sign again at the next position; the chain never forks.
+          if (!(e instanceof ReceiptConflict) || attempt >= 50) throw e;
+          await new Promise((r) => setTimeout(r, Math.random() * 5 * (attempt + 1)));
+        }
+      }
+    };
+    const next = this.queue.then(run, run);
+    this.queue = next.catch(() => undefined);
+    return next;
+  }
+
+  private async write(input: AppendInput): Promise<Receipt> {
+    {
       const prev = await this.store.last();
       const body = {
         seq: (prev?.seq ?? 0) + 1,
@@ -102,10 +122,7 @@ export class ReceiptLog {
       const receipt: Receipt = { ...body, hash, signature: signText(hash, this.signer) };
       await this.store.append(receipt);
       return receipt;
-    };
-    const next = this.queue.then(run, run);
-    this.queue = next.catch(() => undefined);
-    return next;
+    }
   }
 
   list(mandateId?: string) {

@@ -8,6 +8,7 @@ import { Governor } from "../core/governor";
 import type { PaymentStore } from "../core/spend";
 import type { ApprovalStore, MandateStore } from "../core/stores";
 import { PgDb, type Sql } from "../db/sql";
+import { isConnectable, MemoryLock, PgAdvisoryLock } from "../core/lock";
 import { memoryStores, pgStores, type Stores } from "../db/stores";
 import { generateSigner, signerFromPem, type Signer } from "../gate/keys";
 import { ReceiptLog } from "../gate/receipts";
@@ -152,6 +153,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
       await governor.recordCapture(p);
     },
     pending: stores.pending,
+    ledger: stores.ledger,
   });
   const catalog = new Catalog(DEMO_CATALOG);
   const credentials = new Credentials(signer);
@@ -172,7 +174,10 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     credentialStore: stores.credentials,
     market,
     passkeys: stores.passkeys,
+    ledger: stores.ledger,
     origins: allowedOrigins,
+    // Several server processes may share one database: lock in Postgres. PGlite and memory are one process.
+    lock: sql && isConnectable(sql) ? new PgAdvisoryLock(sql) : new MemoryLock(),
   });
 
   const apiKey = env.ANTHROPIC_API_KEY;

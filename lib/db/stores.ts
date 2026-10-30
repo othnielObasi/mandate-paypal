@@ -1,4 +1,5 @@
 import type { Ap2PurchaseRecord } from "../ap2v2/records";
+import { MemoryLedger, type BudgetLedger } from "../core/ledger";
 import { MemoryPasskeyStore, type PasskeyRecord, type PasskeyStore } from "../passkey/store";
 import { MemoryConnectionStore, type ConnectionRecord, type ConnectionStore } from "../mcp/connections";
 import { MemoryCredentialStore, type CredentialRecord, type CredentialStore } from "../ap2/store";
@@ -24,9 +25,34 @@ import {
   type OrderStore,
 } from "../fulfilment/stores";
 import { MemoryPermitStore, type Permit, type PermitStore } from "../gate/permits";
-import { MemoryReceiptStore, type Receipt, type ReceiptStore } from "../gate/receipts";
+import { MemoryReceiptStore, ReceiptConflict, type Receipt, type ReceiptStore } from "../gate/receipts";
 import type { MandateStatus } from "../gate/types";
 import { toJson, type PgDb } from "./sql";
+
+class PgLedger implements BudgetLedger {
+  constructor(private db: PgDb) {}
+  /** One statement, one snapshot. */
+  async committed(mandateId: string, period: Period, at: Date) {
+    const [r] = await this.db.q<{ spent: string | number; reserved: string | number }>(
+      `SELECT
+         (SELECT COALESCE(SUM(amount_minor), 0) FROM payments
+           WHERE mandate_id = $1 AND captured_at >= $2::timestamptz AND captured_at <= $3::timestamptz) AS spent,
+         (SELECT COALESCE(SUM(amount_minor), 0) FROM permits
+           WHERE mandate_id = $1 AND closed_at IS NULL AND (used_at IS NOT NULL OR expires_at >= $3::timestamptz)) AS reserved`,
+      [mandateId, periodStart(period, at).toISOString(), at.toISOString()],
+    );
+    return { spentMinor: Number(r?.spent ?? 0), reservedMinor: Number(r?.reserved ?? 0) };
+  }
+  /** Record the payment and release its permit in one statement. */
+  async settle(p: PaymentRecord, permitId: string | null) {
+    await this.db.q(
+      `WITH released AS (UPDATE permits SET closed_at = now() WHERE id = $6 AND closed_at IS NULL RETURNING id)
+       INSERT INTO payments (paypal_order_id, mandate_id, amount_minor, captured_at, data)
+       VALUES ($1, $2, $3, $4::timestamptz, $5::jsonb) ON CONFLICT (paypal_order_id) DO NOTHING`,
+      [p.paypalOrderId, p.mandateId, p.amountMinor, p.capturedAt, toJson(p), permitId],
+    );
+  }
+}
 
 export interface Stores {
   mandates: MandateStore;
@@ -42,14 +68,18 @@ export interface Stores {
   credentials: CredentialStore;
   connections: ConnectionStore;
   passkeys: PasskeyStore;
+  ledger: BudgetLedger;
 }
 
 export function memoryStores(): Stores {
+  const permits = new MemoryPermitStore();
+  const payments = new MemoryPaymentStore();
   return {
     mandates: new MemoryMandateStore(),
     approvals: new MemoryApprovalStore(),
-    permits: new MemoryPermitStore(),
-    payments: new MemoryPaymentStore(),
+    permits,
+    payments,
+    ledger: new MemoryLedger(payments, permits),
     receipts: new MemoryReceiptStore(),
     pending: new MemoryPendingStore(),
     orders: new MemoryOrderStore(),
@@ -141,9 +171,13 @@ class PgPermits implements PermitStore {
     const rows = await this.db.q(`UPDATE permits SET used_at = now() WHERE id = $1 AND used_at IS NULL RETURNING id`, [id]);
     return rows.length === 1;
   }
+  async close(id: string) {
+    await this.db.q(`UPDATE permits SET closed_at = now() WHERE id = $1 AND closed_at IS NULL`, [id]);
+  }
   async reservedMinor(mandateId: string, now: Date) {
     const rows = await this.db.q<{ s: string | number | null }>(
-      `SELECT COALESCE(SUM(amount_minor), 0) AS s FROM permits WHERE mandate_id = $1 AND used_at IS NULL AND expires_at >= $2::timestamptz`,
+      `SELECT COALESCE(SUM(amount_minor), 0) AS s FROM permits
+       WHERE mandate_id = $1 AND closed_at IS NULL AND (used_at IS NOT NULL OR expires_at >= $2::timestamptz)`,
       [mandateId, now.toISOString()],
     );
     return Number(rows[0]?.s ?? 0);
@@ -180,7 +214,12 @@ class PgReceipts implements ReceiptStore {
   constructor(private db: PgDb) {}
   /** seq is the primary key: a second writer at the same position fails instead of forking the chain. */
   async append(r: Receipt) {
-    await this.db.q(`INSERT INTO receipts (seq, mandate_id, data) VALUES ($1, $2, $3::jsonb)`, [r.seq, r.mandateId, toJson(r)]);
+    try {
+      await this.db.q(`INSERT INTO receipts (seq, mandate_id, data) VALUES ($1, $2, $3::jsonb)`, [r.seq, r.mandateId, toJson(r)]);
+    } catch (e) {
+      if ((e as { code?: string }).code === "23505") throw new ReceiptConflict(`receipt ${r.seq} already written`);
+      throw e;
+    }
   }
   async last() {
     return one(await this.db.q<Doc<Receipt>>(`SELECT data FROM receipts ORDER BY seq DESC LIMIT 1`));
@@ -368,5 +407,6 @@ export function pgStores(db: PgDb): Stores {
     credentials: new PgCredentials(db),
     connections: new PgConnections(db),
     passkeys: new PgPasskeys(db),
+    ledger: new PgLedger(db),
   };
 }

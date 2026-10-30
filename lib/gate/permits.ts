@@ -99,16 +99,22 @@ export interface PermitStore {
   get(id: string): Promise<Permit | undefined>;
   /** Atomically mark used. True only for the first caller. */
   consume(id: string): Promise<boolean>;
-  /** Money held by unused, unexpired permits for a mandate. */
+  /** The payment it authorised has settled, failed or been cancelled: stop holding its money. */
+  close(id: string): Promise<void>;
+  /**
+   * Money a mandate has committed but not yet settled: unused permits that
+   * haven't expired, plus used permits whose payment is still in flight
+   * (being created or captured in PayPal, or waiting for the buyer).
+   */
   reservedMinor(mandateId: string, now: Date): Promise<number>;
 }
 
 export class MemoryPermitStore implements PermitStore {
-  private rows = new Map<string, { permit: Permit; used: boolean }>();
+  private rows = new Map<string, { permit: Permit; used: boolean; closed: boolean }>();
 
   async save(p: Permit) {
     if (this.rows.has(p.id)) throw new Error("permit id already exists");
-    this.rows.set(p.id, { permit: p, used: false });
+    this.rows.set(p.id, { permit: p, used: false, closed: false });
   }
 
   async get(id: string) {
@@ -122,10 +128,16 @@ export class MemoryPermitStore implements PermitStore {
     return true;
   }
 
+  async close(id: string) {
+    const row = this.rows.get(id);
+    if (row) row.closed = true;
+  }
+
   async reservedMinor(mandateId: string, now: Date) {
     let sum = 0;
-    for (const { permit, used } of this.rows.values()) {
-      if (!used && permit.mandateId === mandateId && Date.parse(permit.expiresAt) >= now.getTime()) sum += permit.amountMinor;
+    for (const { permit, used, closed } of this.rows.values()) {
+      if (permit.mandateId !== mandateId || closed) continue;
+      if (used || Date.parse(permit.expiresAt) >= now.getTime()) sum += permit.amountMinor;
     }
     return sum;
   }
