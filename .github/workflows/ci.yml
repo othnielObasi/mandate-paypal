@@ -29,6 +29,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Google's AP2 reference SDK, pinned, for the interop tests in tests/ap2v2.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: |
+          git clone https://github.com/google-agentic-commerce/AP2 /tmp/ap2
+          git -C /tmp/ap2 checkout e1ea56db72a6385bce3e5c1112b3a56ce60acb43
+          python -m venv /tmp/ap2venv && /tmp/ap2venv/bin/pip install -q -e /tmp/ap2
+          echo "AP2_PYTHON=/tmp/ap2venv/bin/python" >> "$GITHUB_ENV"
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
