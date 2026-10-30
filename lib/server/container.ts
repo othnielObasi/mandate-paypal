@@ -104,7 +104,7 @@ const intEnv = (v: string | undefined, d: number) => {
 };
 
 export function createContainer(env: Env = process.env, opts: { sql?: Sql; webhookVerifier?: WebhookVerifier } = {}): Container {
-  const appUrl = (env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  const appUrl = (env.APP_URL || env.RENDER_EXTERNAL_URL || "http://localhost:3000").replace(/\/$/, "");
   const sql = makeSql(env, opts.sql);
   if (sql && !env.MANDATE_SIGNING_KEY)
     throw new Error("With a database, set MANDATE_SIGNING_KEY so receipts stay verifiable across restarts (see .env.example).");

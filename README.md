@@ -86,6 +86,14 @@ Field names follow the AP2 spec's examples ([ap2-protocol.org](https://ap2-proto
 
 ## Run it
 
+### Deploy (one click)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/othnielObasi/mandate-paypal)
+
+Render reads `render.yaml`, builds the app and gives it a public URL. Leave the keys blank for the offline demo, or paste your PayPal sandbox, Anthropic and Channel3 keys. The landing page is at `/`, the app at `/app`, the seller check at `/seller`.
+
+### Locally
+
 Requires Node 20+.
 
 ```bash
