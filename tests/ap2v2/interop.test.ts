@@ -6,7 +6,7 @@
 import { describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { generateEs256, publicJwk } from "@/lib/ap2v2/es256";
+import { generateEs256, publicJwk, importPublicJwk } from "@/lib/ap2v2/es256";
 import { issueRoot, present, verifyChain, sd } from "@/lib/ap2v2/sdjwt";
 import { openMandatesFor, merchantCheckout, closeAutonomous } from "@/lib/ap2v2/mandates";
 
@@ -75,7 +75,7 @@ describe.skipIf(!PY)("interop with the AP2 reference SDK", () => {
 
   it("Mandate verifies a chain produced by the reference SDK", () => {
     const made = ref({ op: "make_payment" }) as { chain: string; root_jwk: Record<string, string> };
-    const [open, closed] = verifyChain(made.chain, () => ({ ...(made.root_jwk as never) }), {});
+    const [open, closed] = verifyChain(made.chain, () => importPublicJwk(made.root_jwk), {});
     expect(open).toMatchObject({ vct: "mandate.payment.open.1" });
     expect(closed).toMatchObject({ vct: "mandate.payment.1", transaction_id: "tx-ref", payment_amount: { amount: 450 } });
   });
