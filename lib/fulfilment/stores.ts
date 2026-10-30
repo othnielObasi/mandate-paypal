@@ -28,7 +28,8 @@ export interface DisputeRecord {
   mandateId: string;
   reason: "MERCHANDISE_OR_SERVICE_NOT_RECEIVED";
   statement: string;
-  writer: "model" | "template";
+  /** Who wrote the statement: the model, the factual template, or the buyer. */
+  writer: "model" | "template" | "user";
   evidence: unknown;
   evidenceDigest: string;
   status: DisputeStatus;

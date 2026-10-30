@@ -251,9 +251,9 @@ describe("API: PayPal buyer approval round trip", () => {
     expect(p.status).toBe("awaiting_buyer");
     const res = await paypalReturn(get(`/api/paypal/return?token=${p.paypalOrderId}`));
     expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toBe(`${BASE}/?payment=paid`);
+    expect(res.headers.get("location")).toBe(`${BASE}/app?payment=paid`);
     const again = await paypalReturn(get(`/api/paypal/return?token=${p.paypalOrderId}`));
-    expect(again.headers.get("location")).toBe(`${BASE}/?payment=unknown_order`);
+    expect(again.headers.get("location")).toBe(`${BASE}/app?payment=unknown_order`);
   });
 
   it("releases the reservation when the buyer cancels", async () => {
@@ -261,11 +261,11 @@ describe("API: PayPal buyer approval round trip", () => {
     const r = await run(id, "Buy washing-up liquid");
     const p = purchases(r)[0] as unknown as { paypalOrderId: string };
     const res = await paypalCancel(get(`/api/paypal/cancel?token=${p.paypalOrderId}`));
-    expect(res.headers.get("location")).toBe(`${BASE}/?payment=cancelled`);
+    expect(res.headers.get("location")).toBe(`${BASE}/app?payment=cancelled`);
   });
 
   it("ignores a return with no token", async () => {
     const res = await paypalReturn(get(`/api/paypal/return`));
-    expect(res.headers.get("location")).toBe(`${BASE}/?payment=unknown_order`);
+    expect(res.headers.get("location")).toBe(`${BASE}/app?payment=unknown_order`);
   });
 });

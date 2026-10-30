@@ -12,6 +12,7 @@ const Body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("draft") }).strict(),
   z.object({ action: z.literal("file"), confirm: z.boolean().optional() }).strict(),
   z.object({ action: z.literal("sync") }).strict(),
+  z.object({ action: z.literal("edit"), statement: z.string().max(4000) }).strict(),
 ]);
 
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
@@ -22,6 +23,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   try {
     if (body.action === "draft") return json(await c.fulfilment.draftDispute(id, c.newLlm()));
     if (body.action === "file") return json(await c.fulfilment.fileDispute(id, body.confirm === true));
+    if (body.action === "edit") return json(await c.fulfilment.editDisputeStatement(id, body.statement));
     return json(await c.fulfilment.syncDispute(id));
   } catch (e) {
     asHttp(e);

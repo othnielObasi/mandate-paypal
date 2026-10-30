@@ -183,6 +183,29 @@ describe("fulfilment: disputes", () => {
     expect((await f.listOrders("m1"))[0]!.dispute).toMatchObject({ status: "draft" });
   });
 
+  it("the buyer can edit the drafted statement before filing; the edit is signed into the log", async () => {
+    await f.simulate("5O1", "lost");
+    await f.refresh("5O1");
+    await f.draftDispute("5O1", llmSaying(goodText()));
+    const mine = "Order 5O1 for $4.50 never arrived; the carrier lost it. Please refund me in full.";
+    const d = await f.editDisputeStatement("5O1", `  ${mine}  `);
+    expect(d).toMatchObject({ statement: mine, writer: "user", status: "draft" });
+    expect((await f.listOrders("m1"))[0]!.dispute).toMatchObject({ statement: mine, writer: "user" });
+    expect((await receipts.list("m1")).at(-1)).toMatchObject({ type: "dispute", summary: expect.stringMatching(/edited the dispute statement/i) });
+    expect(verifyChain(await receipts.list(), signer.publicKey).ok).toBe(true);
+  });
+
+  it("rejects an empty or oversized statement, and edits once filed", async () => {
+    await f.simulate("5O1", "lost");
+    await f.refresh("5O1");
+    await expect(f.editDisputeStatement("5O1", "x")).rejects.toThrow(/draft the dispute first/i);
+    await f.draftDispute("5O1", llmSaying(goodText()));
+    await expect(f.editDisputeStatement("5O1", "   too short ")).rejects.toThrow(/at least/i);
+    await expect(f.editDisputeStatement("5O1", "a".repeat(2001))).rejects.toThrow(/at most/i);
+    await f.fileDispute("5O1", true);
+    await expect(f.editDisputeStatement("5O1", "A perfectly reasonable statement about order 5O1.")).rejects.toThrow(/already filed/i);
+  });
+
   it("filing needs explicit confirmation and an existing draft", async () => {
     await f.simulate("5O1", "lost");
     await f.refresh("5O1");

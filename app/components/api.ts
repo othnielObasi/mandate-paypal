@@ -9,3 +9,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const usd = (minor: number) => `$${(minor / 100).toFixed(2)}`;
 export const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+export const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+export const merchantName = (id: string) =>
+  ({ "acme-supplies": "Acme Supplies", "corner-mart": "Corner Mart", "promo-deals": "Promo Deals", "office-hub": "Office Hub" })[id] ??
+  id.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());

@@ -2,14 +2,14 @@ import { test, expect, type Page } from "@playwright/test";
 
 const MANDATE = "Household basics, up to $80 a month, nothing over $25, verified sellers only";
 
-async function newMandate(page: Page, edit?: (page: Page) => Promise<void>) {
-  await page.goto("/");
-  const readButton = page.getByRole("button", { name: /Read (my|new) rules/ });
-  await page.getByLabel("Mandate in plain English").fill(MANDATE);
-  await readButton.click();
+async function newMandate(page: Page, edit?: (page: Page) => Promise<void>, text = MANDATE) {
+  await page.goto("/app/setup");
+  await page.getByLabel("Your mandate").fill(text);
+  await page.getByRole("button", { name: "Read my rules" }).click();
   await expect(page.getByTestId("rules-editor")).toBeVisible();
   if (edit) await edit(page);
-  await page.getByRole("button", { name: "Save mandate" }).click();
+  await page.getByRole("button", { name: "Sign and activate" }).click();
+  await page.waitForURL(/\/app$/);
   await expect(page.getByTestId("rules")).toBeVisible();
 }
 
@@ -21,20 +21,41 @@ async function runAgent(page: Page, task: string) {
 
 const feed = (page: Page) => page.getByTestId("feed");
 
-test("the AI reads the rules, the user edits them before saving", async ({ page }) => {
-  await newMandate(page, async (p) => {
-    await p.getByLabel("Per-item limit ($)").fill("30");
+test.describe("landing page", () => {
+  test("explains the product and leads into the app", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Let AI shop for you");
+    for (const h of ["One sentence becomes rules", "Pays, asks you, or never happens", "Know an agent", "Use the AI you already have"]) {
+      await expect(page.getByRole("heading", { name: new RegExp(h) }).first()).toBeVisible();
+    }
+    await page.getByRole("link", { name: /Try the live demo/ }).first().click();
+    await expect(page).toHaveURL(/\/app\/setup$/);
+    await expect(page.getByRole("heading", { name: "What may your agents buy for you?" })).toBeVisible();
   });
-  await expect(page.getByTestId("rules")).toContainText("up to $30.00");
-  await expect(page.getByTestId("rules")).toContainText("$80.00 per month");
+
+  test("an empty account is guided to write a mandate", async ({ page, request }) => {
+    const ms = (await (await request.get("/api/mandates")).json()) as unknown[];
+    test.skip(ms.length > 0, "only meaningful on a fresh server");
+    await page.goto("/app");
+    await expect(page.getByRole("link", { name: "Write my mandate" })).toBeVisible();
+  });
 });
 
-test("an impossible edit is caught before saving", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: /Read (my|new) rules/ }).click();
-  await page.getByLabel("Per-item limit ($)").fill("500");
-  await page.getByRole("button", { name: "Save mandate" }).click();
+test("the AI reads the rules, the user edits them before signing", async ({ page }) => {
+  await newMandate(page, async (p) => {
+    await p.getByLabel("Most they can spend on one order").fill("30");
+  });
+  await expect(page.getByTestId("rules")).toContainText("Up to $30.00 per order");
+  await expect(page.getByTestId("rules")).toContainText("$80.00 per month in total");
+});
+
+test("an impossible edit is caught before signing", async ({ page }) => {
+  await page.goto("/app/setup");
+  await page.getByRole("button", { name: "Read my rules" }).click();
+  await page.getByLabel("Most they can spend on one order").fill("500");
+  await page.getByRole("button", { name: "Sign and activate" }).click();
   await expect(page.getByText("can't be more than the budget")).toBeVisible();
+  await expect(page).toHaveURL(/\/app\/setup$/);
 });
 
 test("in-policy purchases are paid and counted against the budget", async ({ page }) => {
@@ -42,6 +63,7 @@ test("in-policy purchases are paid and counted against the budget", async ({ pag
   await runAgent(page, "Buy washing-up liquid and sponges");
   await expect(feed(page).getByText("Paid", { exact: true })).toHaveCount(2);
   await expect(page.getByTestId("budget")).toContainText("$6.49 spent");
+  await expect(page.getByTestId("activity")).toContainText("Eco washing-up liquid 500ml");
 });
 
 test("over the item limit asks the user; approving pays", async ({ page }) => {
@@ -49,9 +71,21 @@ test("over the item limit asks the user; approving pays", async ({ page }) => {
   await runAgent(page, "Buy an electric kettle");
   const card = page.getByTestId("approval");
   await expect(card).toContainText("$32.00 is over the item limit of $25.00");
-  await card.getByRole("button", { name: "Approve" }).click();
+  await card.getByRole("button", { name: "Approve and sign" }).click();
   await expect(card).toHaveCount(0);
   await expect(feed(page).getByText("Approved by you.")).toBeVisible();
+  await expect(page.getByTestId("budget")).toContainText("$32.00 spent");
+});
+
+test("the approval sheet shows why, and approving from it pays", async ({ page }) => {
+  await newMandate(page);
+  await runAgent(page, "Buy an electric kettle");
+  await page.getByTestId("approval").getByRole("button", { name: "Details", exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: "Approve a purchase" });
+  await expect(sheet).toContainText("Per-item limit");
+  await expect(sheet).toContainText("Electric kettle 1.7L");
+  await sheet.getByRole("button", { name: "Approve and sign" }).click();
+  await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId("budget")).toContainText("$32.00 spent");
 });
 
@@ -62,44 +96,60 @@ test("an unverified seller is blocked", async ({ page }) => {
   await expect(page.getByTestId("budget")).toContainText("$0.00 spent");
 });
 
-test("compromised-agent drill: injected purchases are blocked", async ({ page }) => {
+test("compromised-agent drill: injected purchases are blocked, and the page text is shown", async ({ page }) => {
   await newMandate(page);
   await page.getByRole("button", { name: "Compromised-agent drill" }).click();
   await expect(feed(page).getByText("steered by untrusted content")).toHaveCount(2);
   await expect(feed(page).getByText("Paid", { exact: true })).toHaveCount(1);
+  await page.getByRole("button", { name: /Platinum Deep-Clean Bundle, Blocked/ }).click();
+  const sheet = page.getByRole("dialog", { name: "A purchase was stopped" });
+  await expect(sheet).toContainText("A shop's page tried to make your agent buy something");
+  await expect(sheet).toContainText("SYSTEM NOTE");
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
 });
 
 test("pausing the mandate stops the agent", async ({ page }) => {
   await newMandate(page);
-  await page.getByRole("button", { name: "Pause" }).click();
-  await expect(page.getByRole("button", { name: "Resume" })).toBeVisible();
-  await runAgent(page, "Buy sponges");
-  await expect(feed(page)).toContainText("The mandate is paused");
+  await page.getByRole("button", { name: "Pause all agents" }).click();
+  await expect(page.getByRole("button", { name: "Resume agents" })).toBeVisible();
+  await expect(page.getByLabel("Task for the agent")).toBeDisabled();
+  await page.getByRole("button", { name: "Resume agents" }).click();
+  await expect(page.getByLabel("Task for the agent")).toBeEnabled();
 });
 
-test("lost parcel → AI-drafted dispute → filed after confirmation", async ({ page }) => {
+test("lost parcel → AI-drafted dispute → edited → filed after confirmation", async ({ page }) => {
   await newMandate(page);
   await runAgent(page, "Buy washing-up liquid");
+  await page.getByRole("link", { name: "Orders" }).first().click();
   await page.getByRole("button", { name: "Simulate lost parcel" }).click();
   await expect(page.getByText("Not received", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Draft dispute" }).click();
   const dispute = page.getByTestId("dispute");
-  await expect(dispute).toContainText("draft");
+  await expect(dispute).toContainText("Your dispute is drafted");
   await expect(dispute.locator("blockquote")).toContainText("$4.50");
-  await expect(dispute).toContainText(/Evidence: \d+ signed receipts/);
-  await dispute.getByRole("button", { name: "Confirm and file dispute" }).click();
-  await expect(dispute).toContainText("filed");
+  await expect(dispute).toContainText(/\d+ signed receipts/);
+
+  await dispute.getByRole("button", { name: "Edit the statement" }).click();
+  const mine = "My order for $4.50 was lost by the carrier and never arrived. Please refund me in full.";
+  await dispute.getByLabel("Your statement to PayPal").fill(mine);
+  await dispute.getByRole("button", { name: "Save statement" }).click();
+  await expect(dispute.locator("blockquote")).toHaveText(mine);
+  await expect(dispute).toContainText("In your words.");
+
+  await dispute.getByRole("button", { name: "Confirm and file with PayPal" }).click();
+  await expect(dispute).toContainText("Dispute filed with PayPal");
   await expect(dispute).toContainText("SIM-PP-D-");
 });
 
-test("ledger: editing a receipt in the grid is detected, undoing restores trust", async ({ page }) => {
+test("ledger: verified on load; editing a receipt is detected, undoing restores trust", async ({ page }) => {
   await newMandate(page);
   await runAgent(page, "Buy washing-up liquid");
+  await page.goto("/app/receipts");
   const ledger = page.getByTestId("ledger");
-  await ledger.getByRole("button", { name: "Verify chain" }).click();
   await expect(page.getByTestId("verify-result")).toContainText("verified");
 
-  const paymentCell = ledger.locator(".ag-row").filter({ hasText: "payment" }).locator(".ag-cell[col-id='summary']").first();
+  const paymentCell = ledger.locator(".ag-row").filter({ hasText: "Payment" }).locator(".ag-cell[col-id='summary']").first();
   await paymentCell.dblclick();
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.type("Paid $0.01 to acme-supplies");
@@ -113,49 +163,58 @@ test("ledger: editing a receipt in the grid is detected, undoing restores trust"
   await expect(page.getByTestId("verify-result")).toContainText("verified");
 });
 
-test("works at phone width without sideways scrolling", async ({ page }) => {
+test("works at phone width: no sideways scrolling, tab bar navigation", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await newMandate(page);
   await runAgent(page, "Buy sponges");
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  expect(overflow).toBeLessThanOrEqual(0);
-  // The ledger's key column starts on screen, not hidden behind a sideways scroll.
+  for (const path of ["/", "/app", "/app/orders", "/app/assistants", "/app/receipts", "/seller"]) {
+    await page.goto(path);
+    await page.waitForLoadState("networkidle");
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, `sideways scroll on ${path}`).toBeLessThanOrEqual(0);
+  }
+  await page.goto("/app");
+  const tabs = page.getByRole("navigation", { name: "Main" }).last();
+  await tabs.getByRole("link", { name: "Receipts" }).click();
+  await expect(page).toHaveURL(/\/app\/receipts$/);
   const header = page.getByTestId("ledger").locator(".ag-header-cell[col-id='summary']");
   await header.scrollIntoViewIfNeeded();
-  const box = await header.boundingBox();
-  expect(box!.x).toBeLessThan(390 - 100);
+  expect((await header.boundingBox())!.x).toBeLessThan(390 - 100);
 });
 
 test("the mandate is signed by the user (AP2 Intent Mandate)", async ({ page }) => {
   await newMandate(page);
-  await expect(page.getByTestId("rules")).toContainText("✓ by you (AP2 Intent Mandate)");
+  await expect(page.getByText(/Signed by you · Intent Mandate/)).toBeVisible();
 });
 
 test("seller view: an agent payment is shown as backed by the buyer's signed mandate", async ({ page }) => {
   await newMandate(page);
   await runAgent(page, "Buy washing-up liquid");
-  await page.getByRole("link", { name: "check as the seller →" }).first().click();
+  await page.goto("/app/orders");
+  await page.getByRole("link", { name: "Check as the seller" }).first().click();
   const detail = page.getByTestId("seller-detail");
   await expect(detail).toContainText("Safe to fulfil");
   for (const check of ["Intent Mandate signed by the user", "Cart Mandate signed by the merchant", "Payment attested by the Mandate gateway", "PayPal order carries this payment mandate"]) {
     await expect(detail).toContainText(check);
   }
-  await expect(page.getByTestId("seller-grid")).toContainText("Backed by signed mandate");
+  await expect(page.getByTestId("seller-grid")).toContainText("Safe to fulfil");
 });
 
 test("market-price rule: an above-market price goes to the user", async ({ page }) => {
-  await page.goto("/");
-  await page.getByLabel("Mandate in plain English").fill("Office supplies, $100 a month, nothing over $30, never more than 10% above market price");
-  await page.getByRole("button", { name: /Read (my|new) rules/ }).click();
-  await expect(page.getByLabel("Max above market (%)")).toHaveValue("10");
-  await page.getByRole("button", { name: "Save mandate" }).click();
-  await expect(page.getByTestId("rules")).toContainText("at most 10% above market");
+  await page.goto("/app/setup");
+  await page.getByLabel("Your mandate").fill("Office supplies, $100 a month, nothing over $30, never more than 10% above market price");
+  await page.getByRole("button", { name: "Read my rules" }).click();
+  await expect(page.getByLabel("Fair price")).toHaveValue("10");
+  await page.getByRole("button", { name: "Sign and activate" }).click();
+  await page.waitForURL(/\/app$/);
+  await expect(page.getByTestId("rules")).toContainText("Never more than 10% above market price");
   await runAgent(page, "Buy black ink");
   await expect(page.getByTestId("approval")).toContainText("15% above the market price of $19.99");
 });
 
-test("an outside AI assistant connects over MCP and can only buy through the mandate", async ({ page, request, baseURL }) => {
+test("an outside AI assistant connects over MCP and can only buy through the mandate", async ({ page, request }) => {
   await newMandate(page);
+  await page.goto("/app/assistants");
   await page.getByLabel("Assistant name").fill("E2E Agent");
   await page.getByRole("button", { name: "Create connection URL" }).click();
   const url = (await page.getByTestId("connection-url").locator("code").first().textContent())!.trim();
@@ -172,13 +231,13 @@ test("an outside AI assistant connects over MCP and can only buy through the man
   expect(blocked.content[0]!.text).toMatch(/^Blocked/);
   await client.close();
 
-  await page.reload();
-  await expect(page.getByTestId("ledger")).toContainText("via E2E Agent");
+  await page.goto("/app");
+  await expect(page.getByTestId("activity")).toContainText("E2E Agent");
 
   // Revoke: the assistant is cut off.
-  await page.getByTestId("connections").getByRole("button", { name: "Revoke" }).click();
-  await expect(page.getByTestId("connections")).toContainText("revoked");
+  await page.goto("/app/assistants");
+  await page.getByRole("button", { name: "Revoke" }).click();
+  await expect(page.getByText("Revoked", { exact: true })).toBeVisible();
   const after = await request.post(url, { data: { jsonrpc: "2.0", id: 1, method: "tools/list" } });
   expect(after.status()).toBe(401);
-  void baseURL;
 });

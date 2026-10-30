@@ -206,6 +206,25 @@ export class Fulfilment {
     return dispute;
   }
 
+  /** The buyer rewrites the drafted statement in their own words before filing. */
+  async editDisputeStatement(orderId: string, statement: string): Promise<DisputeRecord> {
+    const o = await this.require(orderId);
+    const draft = await this.d.disputes.get(orderId);
+    if (!draft) throw new Error("Draft the dispute first.");
+    if (draft.status !== "draft") throw new Error(`This dispute is already filed (${draft.status.replace(/_/g, " ")}); it can't be edited.`);
+    const text = statement.trim();
+    if (text.length < 20) throw new Error("The statement needs at least 20 characters.");
+    if (text.length > 2000) throw new Error("The statement can be at most 2,000 characters.");
+    if (!(await this.d.disputes.transition(orderId, "draft", { statement: text, writer: "user" }))) throw new Error("This dispute was already filed; it can't be edited.");
+    await this.d.receipts.append({
+      mandateId: o.mandateId,
+      type: "dispute",
+      summary: `You edited the dispute statement for order ${o.id} before filing`,
+      payload: { orderId: o.id, statementHash: sha256Hex(text), evidenceDigest: draft.evidenceDigest },
+    });
+    return (await this.d.disputes.get(orderId))!;
+  }
+
   async fileDispute(orderId: string, confirm: boolean): Promise<DisputeRecord> {
     if (!confirm) throw new Error("Filing a dispute needs your explicit confirmation.");
     const o = await this.require(orderId);
