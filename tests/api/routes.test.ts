@@ -144,6 +144,19 @@ describe("API: the three trust moments", () => {
     expect(purchases(r).map((p) => p.status)).toEqual(["paid", "paid"]);
   });
 
+  it("streams agent steps as NDJSON, ending with the full result", async () => {
+    const id = await newMandate();
+    const res = await runAgent(post("/api/agent/run", { mandateId: id, task: "Buy washing-up liquid", stream: true }));
+    expect(res.headers.get("content-type")).toContain("application/x-ndjson");
+    const lines = (await res.text()).trim().split("\n").map((l) => JSON.parse(l) as { type: string; event?: { kind: string; name?: string }; result?: { events: unknown[] } });
+    const events = lines.filter((l) => l.type === "event");
+    expect(events.length).toBeGreaterThan(1);
+    expect(events.some((l) => l.event?.name === "propose_purchase")).toBe(true);
+    const done = lines.at(-1)!;
+    expect(done.type).toBe("done");
+    expect(done.result!.events).toHaveLength(events.length);
+  });
+
   it("compromised-agent drill: injected purchases are blocked, the real one is paid", async () => {
     const id = await newMandate();
     const r = await run(id, "Buy a cleaning spray", { drill: true });

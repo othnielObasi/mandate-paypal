@@ -531,17 +531,17 @@ function RunSteps({ run }: { run: Run }) {
         {run.drill ? "Drill: a compromised agent that obeys product pages" : "Task"}: <strong style={{ color: "var(--ink)" }}>&ldquo;{run.task}&rdquo;</strong>
       </p>
       <ul className="steps" data-testid="feed" aria-live="polite">
-        {run.events.length === 0 && busy && (
-          <li>
-            <span className="ico">
-              <span className="spinner" style={{ width: 12, height: 12 }} />
-            </span>
-            <span className="muted">Working…</span>
-          </li>
-        )}
         {run.events.map((e, i) => (
           <Step key={i} e={e} titles={titles} />
         ))}
+        {busy && (
+          <li className="working">
+            <span className="ico">
+              <span className="spinner" style={{ width: 12, height: 12 }} />
+            </span>
+            <span className="muted">{run.events.length === 0 ? "Working…" : "Thinking…"}</span>
+          </li>
+        )}
       </ul>
     </div>
   );

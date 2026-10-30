@@ -45,6 +45,8 @@ export function useStore(): Store {
   return s;
 }
 
+const STEP_PACE_MS = 140;
+
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [health, setHealth] = useState<Health | null>(null);
@@ -114,8 +116,40 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (!id) return;
       setRun({ task, drill, events: [] });
       await act(async () => {
-        const r = await api<{ events: AgentEvent[] }>("/api/agent/run", { method: "POST", body: JSON.stringify({ mandateId: id, task, drill }) });
-        setRun({ task, drill, events: r.events });
+        const res = await fetch("/api/agent/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mandateId: id, task, drill, stream: true }) });
+        if (!res.ok || !res.body) {
+          const b = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(b.error ?? `Request failed (${res.status})`);
+        }
+        // Show each step as it happens; pace instant (simulated) runs so people can follow them.
+        const events: AgentEvent[] = [];
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = "";
+        let last = 0;
+        let failed: string | null = null;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (value) buf += dec.decode(value, { stream: true });
+          let nl: number;
+          while ((nl = buf.indexOf("\n")) >= 0) {
+            const line = buf.slice(0, nl).trim();
+            buf = buf.slice(nl + 1);
+            if (!line) continue;
+            const msg = JSON.parse(line) as { type: "event"; event: AgentEvent } | { type: "done"; result: { events: AgentEvent[] } } | { type: "error"; error: string };
+            if (msg.type === "event") {
+              const wait = last + STEP_PACE_MS - Date.now();
+              if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+              last = Date.now();
+              events.push(msg.event);
+              setRun({ task, drill, events: [...events] });
+              if (msg.event.kind === "tool" && msg.event.name === "propose_purchase") void refresh();
+            } else if (msg.type === "done") setRun({ task, drill, events: msg.result.events });
+            else failed = msg.error;
+          }
+          if (done) break;
+        }
+        if (failed) throw new Error(failed);
         await refresh();
       });
     },
