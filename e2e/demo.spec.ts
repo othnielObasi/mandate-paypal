@@ -66,6 +66,24 @@ test("in-policy purchases are paid and counted against the budget", async ({ pag
   await expect(page.getByTestId("activity")).toContainText("Eco washing-up liquid 500ml");
 });
 
+test("guided first run ticks off steps; a paid purchase opens its AP2 proof", async ({ page }) => {
+  await newMandate(page);
+  const tour = page.getByTestId("try-it");
+  await expect(tour).toContainText("0 of 3");
+  await tour.getByRole("button", { name: "Buy washing-up liquid" }).click();
+  await expect(tour).toContainText("1 of 3");
+  await page.getByTestId("activity").getByRole("button", { name: /Eco washing-up liquid 500ml, Paid/ }).click();
+  const proof = page.getByRole("dialog", { name: "Proof of purchase" });
+  await expect(proof).toContainText("Verified · AP2 v0.2");
+  await expect(proof).toContainText("Within the limits you signed");
+  await expect(proof.getByRole("link", { name: "Download evidence" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await tour.getByRole("button", { name: "Run the drill" }).click();
+  await expect(tour).toContainText("2 of 3");
+  await tour.getByRole("button", { name: "Hide" }).click();
+  await expect(tour).toHaveCount(0);
+});
+
 test("over the item limit asks the user; approving pays", async ({ page }) => {
   await newMandate(page);
   await runAgent(page, "Buy an electric kettle");

@@ -53,6 +53,8 @@ function Dashboard({ mandate }: { mandate: Mandate }) {
   const { budget, approvals, activity, act, refresh, toast, busy, decide } = useStore();
   const [openApproval, setOpenApproval] = useState<Approval | null>(null);
   const [openBlocked, setOpenBlocked] = useState<Activity | null>(null);
+  const [openProof, setOpenProof] = useState<Activity | null>(null);
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
   const p = mandate.policy;
   const sig = mandate.intentMandate?.user_authorization?.split(".")[2]?.slice(0, 10);
 
@@ -113,6 +115,9 @@ function Dashboard({ mandate }: { mandate: Mandate }) {
 
       <div className="split">
         <div className="col">
+          <div className="only-narrow">
+            <BudgetCard compact />
+          </div>
           {approvals.map((a) => {
             const row = rowFor(a);
             return (
@@ -146,6 +151,8 @@ function Dashboard({ mandate }: { mandate: Mandate }) {
             );
           })}
 
+          <TryIt />
+
           <AgentCard disabled={mandate.status !== "active"} />
 
           <section className="card" aria-labelledby="activity-h">
@@ -167,6 +174,7 @@ function Dashboard({ mandate }: { mandate: Mandate }) {
                       a={x}
                       onOpen={() => {
                         if (x.status === "blocked") setOpenBlocked(x);
+                        else if (x.status === "paid" && x.paypalOrderId) setOpenProof(x);
                         else if (x.status === "asked") {
                           const ap = approvals.find((y) => y.id === x.approvalId);
                           if (ap) setOpenApproval(ap);
@@ -181,7 +189,7 @@ function Dashboard({ mandate }: { mandate: Mandate }) {
         </div>
 
         <aside className="col">
-          {budget && <BudgetCard />}
+          <div className="only-wide">{budget && <BudgetCard />}</div>
           <section className="card" aria-labelledby="rules-h">
             <h2 id="rules-h" className="section-label" style={{ marginBottom: 12 }}>
               Your rules
@@ -219,11 +227,24 @@ function Dashboard({ mandate }: { mandate: Mandate }) {
                 <span>Until {new Date(`${p.expires}T12:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</span>
               </li>
             </ul>
-            {mandate.status !== "revoked" && (
-              <button className="btn btn-sm btn-danger mt-16" onClick={() => confirm("Revoke this mandate? No agent will be able to spend under it again.") && setStatus("revoked")} disabled={busy}>
-                Revoke mandate
-              </button>
-            )}
+            {mandate.status !== "revoked" &&
+              (confirmRevoke ? (
+                <div className="banner banner-block mt-16" role="alert" style={{ padding: "12px 14px" }}>
+                  <span className="grow small" style={{ color: "inherit" }}>
+                    No agent will be able to spend under this mandate again.
+                  </span>
+                  <button className="btn btn-sm" onClick={() => setConfirmRevoke(false)}>
+                    Keep it
+                  </button>
+                  <button className="btn btn-sm btn-danger" onClick={() => (setConfirmRevoke(false), setStatus("revoked"))} disabled={busy}>
+                    Revoke now
+                  </button>
+                </div>
+              ) : (
+                <button className="btn btn-sm btn-danger mt-16" onClick={() => setConfirmRevoke(true)} disabled={busy}>
+                  Revoke mandate
+                </button>
+              ))}
           </section>
           <WhoCanShop />
         </aside>
@@ -231,6 +252,7 @@ function Dashboard({ mandate }: { mandate: Mandate }) {
 
       {openApproval && <ApprovalSheet approval={openApproval} row={rowFor(openApproval)} onClose={() => setOpenApproval(null)} />}
       {openBlocked && <BlockedSheet a={openBlocked} onClose={() => setOpenBlocked(null)} />}
+      {openProof && <ProofSheet a={openProof} onClose={() => setOpenProof(null)} />}
     </>
   );
 }
@@ -247,7 +269,7 @@ function Countdown({ until }: { until: string }) {
 
 function ActivityRow({ a, onOpen }: { a: Activity; onOpen: () => void }) {
   const tone = STATUS_TONE[a.status];
-  const clickable = a.status === "blocked" || a.status === "asked";
+  const clickable = a.status === "blocked" || a.status === "asked" || (a.status === "paid" && !!a.paypalOrderId);
   const detail = a.status === "blocked" ? (a.injected ? "A product page told the agent to buy this. You never asked for it." : a.reason) : a.status === "paid" ? `${merchantName(a.merchantId)} · ${a.agent} · ${a.reason === "Approved by you." ? "approved by you" : "within every rule"}` : `${merchantName(a.merchantId)} · ${a.agent} · ${a.reason}`;
   const body = (
     <>
@@ -265,7 +287,7 @@ function ActivityRow({ a, onOpen }: { a: Activity; onOpen: () => void }) {
     </>
   );
   return clickable ? (
-    <button type="button" className="act" onClick={onOpen} aria-label={`${a.title}, ${STATUS_LABEL[a.status]}. Show details`}>
+    <button type="button" className="act" onClick={onOpen} aria-label={`${a.title}, ${STATUS_LABEL[a.status]}. ${a.status === "paid" ? "Show proof" : "Show details"}`}>
       {body}
     </button>
   ) : (
@@ -273,12 +295,27 @@ function ActivityRow({ a, onOpen }: { a: Activity; onOpen: () => void }) {
   );
 }
 
-function BudgetCard() {
+function BudgetCard({ compact = false }: { compact?: boolean }) {
   const { budget } = useStore();
   if (!budget) return null;
   const p = budget.mandate.policy;
   const pct = (n: number) => Math.min(100, (n / p.budget.amountMinor) * 100);
   const label = p.budget.period === "month" ? new Date().toLocaleDateString(undefined, { month: "long" }) : "This week's";
+  if (compact)
+    return (
+      <section className="card" aria-label={`${label} budget`} style={{ padding: "14px 16px" }}>
+        <div className="row between">
+          <span className="section-label">{label} budget</span>
+          <strong>
+            {usd(budget.remainingMinor)} <span className="tiny">left of {usd(p.budget.amountMinor)}</span>
+          </strong>
+        </div>
+        <div className="meter" style={{ margin: "10px 0 0" }} role="img" aria-label={`${usd(budget.spentMinor)} of ${usd(p.budget.amountMinor)} spent`}>
+          <i className="spent" style={{ width: `${pct(budget.spentMinor)}%` }} />
+          <i className="held" style={{ width: `${pct(budget.reservedMinor)}%` }} />
+        </div>
+      </section>
+    );
   return (
     <section className="card" aria-labelledby="budget-h">
       <h2 id="budget-h" className="section-label">
@@ -337,6 +374,98 @@ function WhoCanShop() {
       <NextLink href="/app/assistants" className="row mt-16" style={{ gap: 6, fontWeight: 600 }}>
         <Plug size={16} /> Connect another assistant
       </NextLink>
+    </section>
+  );
+}
+
+/* ---------------- Guided first run ---------------- */
+
+const TRY_KEY = "mandate.tryit.hidden";
+
+/** A three-step tour for first-time visitors and judges; each step ticks itself off from real activity. */
+function TryIt() {
+  const { activity, runAgent, busy, mandate } = useStore();
+  const [hidden, setHidden] = useState(true);
+  useEffect(() => {
+    try {
+      setHidden(localStorage.getItem(TRY_KEY) === "1");
+    } catch {
+      setHidden(false);
+    }
+  }, []);
+  const steps = [
+    {
+      id: "allow",
+      title: "Buy something within your rules",
+      body: "It pays straight away with PayPal, and you get a signed proof.",
+      done: activity.some((a) => a.status === "paid" && a.reason !== "Approved by you."),
+      action: { label: "Buy washing-up liquid", run: () => runAgent("Buy washing-up liquid and sponges", false) },
+    },
+    {
+      id: "ask",
+      title: "Go over a limit",
+      body: "The kettle costs more than your per-order cap, so Mandate asks you first.",
+      done: activity.some((a) => a.status === "paid" && a.reason === "Approved by you.") || activity.some((a) => a.status === "declined"),
+      action: { label: "Buy an electric kettle", run: () => runAgent("Buy an electric kettle", false) },
+    },
+    {
+      id: "block",
+      title: "Try to trick the agent",
+      body: "A product page hides instructions to buy extras. Watch Mandate refuse them.",
+      done: activity.some((a) => a.status === "blocked" && a.injected),
+      action: { label: "Run the drill", run: () => runAgent("Buy a cleaning spray", true) },
+    },
+  ];
+  const doneCount = steps.filter((x) => x.done).length;
+  if (hidden || mandate?.status !== "active") return null;
+  const hide = () => {
+    setHidden(true);
+    try {
+      localStorage.setItem(TRY_KEY, "1");
+    } catch {
+      /* per-viewer convenience only */
+    }
+  };
+  return (
+    <section className="card card-accent" aria-labelledby="tryit-h" data-testid="try-it">
+      <div className="card-head">
+        <h2 id="tryit-h" className="card-title">
+          {doneCount === 3 ? "You've seen what Mandate does" : "Try it in 3 steps"}
+        </h2>
+        <span className="row" style={{ gap: 8 }}>
+          <span className="tiny">{doneCount} of 3</span>
+          <button className="btn btn-sm btn-ghost" onClick={hide}>
+            {doneCount === 3 ? "Close" : "Hide"}
+          </button>
+        </span>
+      </div>
+      <ol className="tryit">
+        {steps.map((x, i) => (
+          <li key={x.id} className={x.done ? "done" : undefined}>
+            <span className="n" aria-hidden="true">
+              {x.done ? <Check size={14} /> : i + 1}
+            </span>
+            <span className="grow">
+              <strong>{x.title}</strong>
+              <span className="small" style={{ display: "block" }}>
+                {x.body}
+              </span>
+            </span>
+            {x.done ? (
+              <span className="chip chip-allow">Done</span>
+            ) : (
+              <button className="btn btn-sm" onClick={x.action.run} disabled={busy}>
+                {x.action.label}
+              </button>
+            )}
+          </li>
+        ))}
+      </ol>
+      {doneCount === 3 && (
+        <p className="small mt-12">
+          Next: open <NextLink href="/seller">the seller check</NextLink> to see how a shop verifies your consent, or <NextLink href="/app/assistants">connect Claude or ChatGPT</NextLink>.
+        </p>
+      )}
     </section>
   );
 }
@@ -572,6 +701,91 @@ function ApprovalSheet({ approval, row, onClose }: { approval: Approval; row: Ac
       <button className="btn btn-lg btn-block" onClick={() => go("decline")} disabled={busy}>
         Decline
       </button>
+    </Dialog>
+  );
+}
+
+type Ap2View = {
+  ok: boolean;
+  mode: "human_present" | "human_not_present";
+  checks: Array<{ id: string; label: string; ok: boolean; detail: string }>;
+  evidence: { checkoutReceipt?: string; paymentReceipt?: string };
+};
+
+const claimsOf = (jwt?: string): Record<string, unknown> | null => {
+  try {
+    const p = jwt!.split(".")[1]!.replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(p + "=".repeat((4 - (p.length % 4)) % 4))) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+};
+
+/** What the buyer can show anyone: the purchase was within their signed mandate, with receipts. */
+function ProofSheet({ a, onClose }: { a: Activity; onClose: () => void }) {
+  const [v, setV] = useState<Ap2View | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    api<Ap2View>(`/api/ap2/orders/${encodeURIComponent(a.paypalOrderId!)}`)
+      .then(setV)
+      .catch((e) => setErr(e instanceof Error ? e.message : String(e)));
+  }, [a.paypalOrderId]);
+  const cr = claimsOf(v?.evidence.checkoutReceipt);
+  const pr = claimsOf(v?.evidence.paymentReceipt);
+  return (
+    <Dialog label="Proof of purchase" onClose={onClose} testId="proof-sheet">
+      <div className="row" style={{ gap: 12, alignItems: "flex-start", flexWrap: "nowrap", paddingRight: 40 }}>
+        <span className={`icon-tile ${v && !v.ok ? "icon-tile-block" : "icon-tile-allow"}`}>{v && !v.ok ? <ShieldX size={24} /> : <Shield size={24} />}</span>
+        <div>
+          <p className="eyebrow" style={{ color: v && !v.ok ? "var(--block)" : "var(--allow)" }}>
+            {!v && !err ? "Checking…" : v?.ok ? "Verified · AP2 v0.2" : "Could not verify"}
+          </p>
+          <h2 style={{ fontSize: 22, marginTop: 4 }}>{a.title}</h2>
+          <p className="small">
+            {usd(a.amountMinor)} to {merchantName(a.merchantId)} · {clock(a.time)}
+          </p>
+        </div>
+      </div>
+      {err && <p className="error-text">{err}</p>}
+      {v && (
+        <>
+          <section className="card" style={{ padding: "14px 16px" }}>
+            <p style={{ fontWeight: 600 }}>{v.mode === "human_present" ? "You approved this exact cart" : "Within the limits you signed"}</p>
+            <p className="small">
+              {v.mode === "human_present"
+                ? "Signed with your key at approval. The agent could not change the item or price afterwards."
+                : "Your signed mandate allowed it; your agent closed it for this exact checkout, which the merchant signed."}
+            </p>
+          </section>
+          <ul className="ticks small" aria-label="Checks">
+            {v.checks.map((c) => (
+              <li key={c.id}>
+                {c.ok ? <Check size={14} className="ok-ico" /> : <Cross size={14} className="bad-ico" />}
+                <span style={{ color: "var(--ink-2)" }}>{c.label}</span>
+              </li>
+            ))}
+          </ul>
+          <section className="card" style={{ padding: "14px 16px" }}>
+            <p className="tiny" style={{ marginBottom: 6 }}>
+              Receipts
+            </p>
+            <p className="small">
+              Merchant: <span className="mono">{String(cr?.order_id ?? "pending")}</span>
+            </p>
+            <p className="small">
+              PayPal capture: <span className="mono">{String(pr?.psp_confirmation_id ?? "pending")}</span>
+            </p>
+          </section>
+          <div className="row">
+            <a className="btn btn-primary grow" href={`/api/ap2/orders/${encodeURIComponent(a.paypalOrderId!)}`} download={`ap2-evidence-${a.paypalOrderId}.json`}>
+              Download evidence
+            </a>
+            <NextLink className="btn grow" href={`/seller?merchant=${encodeURIComponent(a.merchantId)}&order=${encodeURIComponent(a.paypalOrderId!)}`} onClick={onClose}>
+              Check as the seller
+            </NextLink>
+          </div>
+        </>
+      )}
     </Dialog>
   );
 }

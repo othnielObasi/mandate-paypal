@@ -165,7 +165,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     <Ctx.Provider value={value}>
       {children}
       {toastMsg && (
-        <div className="toast" role="status" aria-live="polite">
+        <div className="toast" role="status" aria-live="polite" title="Dismiss" onClick={() => setToastMsg(null)}>
           {toastMsg}
         </div>
       )}
