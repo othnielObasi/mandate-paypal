@@ -24,10 +24,6 @@ const policy: Policy = {
   overLimit: "ask",
   expires: "2027-01-31",
 };
-const MERCHANTS = [
-  { id: "acme-supplies", name: "Acme Supplies", verified: true },
-  { id: "corner-mart", name: "Corner Mart", verified: false },
-];
 
 const provider = generateEs256("mandate-provider");
 const agent = generateEs256("mandate-agent");
@@ -35,7 +31,7 @@ const merchant = generateEs256("acme-supplies");
 const gateway = generateEs256("mandate-gateway");
 
 function setup() {
-  const open = openMandatesFor(policy, MERCHANTS, { providerKey: provider, agentKey: agent, now: NOW, description: "Household basics" });
+  const open = openMandatesFor(policy, { providerKey: provider, agentKey: agent, now: NOW });
   const checkout = merchantCheckout({ id: "cart_1", merchant: { id: "acme-supplies", name: "Acme Supplies" }, currency: "USD", items: [{ sku: "wul-500", title: "Eco washing-up liquid 500ml", unitMinor: 450, qty: 1 }] }, merchant);
   return { open, checkout };
 }
@@ -49,21 +45,24 @@ function keys() {
 }
 
 describe("AP2 v0.2 mandates from a Mandate policy", () => {
-  it("maps the policy onto standard open mandates bound to the agent key", () => {
+  it("maps the policy's fixed limits onto standard open mandates bound to the agent key", () => {
     const { open } = setup();
-    expect(open.checkoutOpen.mandate).toMatchObject({ vct: "mandate.checkout.open.1", cnf: { jwk: publicJwk(agent) } });
-    expect(open.paymentOpen.mandate.constraints).toEqual(
-      expect.arrayContaining([
-        { type: "payment.amount_range", currency: "USD", min: 0, max: 2500 },
-        { type: "payment.budget", currency: "USD", max: 80 },
-        { type: "payment.agent_recurrence", frequency: "MONTHLY" },
-        { type: "payment.reference", conditional_transaction_id: open.openCheckoutHash },
-        { type: "payment.allowed_payees", allowed: [{ id: "acme-supplies", name: "Acme Supplies" }] },
-      ]),
-    );
-    // Verified-only: the unverified seller is not an allowed merchant.
-    expect(JSON.stringify(open.checkoutOpen.mandate)).not.toContain("corner-mart");
+    expect(open.checkoutOpen.mandate).toMatchObject({ vct: "mandate.checkout.open.1", cnf: { jwk: publicJwk(agent) }, constraints: [] });
+    expect(open.paymentOpen.mandate.constraints).toEqual([
+      { type: "payment.amount_range", currency: "USD", min: 0, max: 2500 },
+      { type: "payment.budget", currency: "USD", max: 80 },
+      { type: "payment.agent_recurrence", frequency: "MONTHLY" },
+      { type: "payment.reference", conditional_transaction_id: open.openCheckoutHash },
+    ]);
+    // Seller rules depend on the live registry, so they are enforced by the gate, not frozen into the mandate.
+    expect(JSON.stringify(open.paymentOpen.mandate)).not.toContain("allowed_payees");
     expect(open.paymentOpen.mandate.exp).toBe(Math.floor(Date.parse("2027-01-31T23:59:59Z") / 1000));
+  });
+
+  it("an explicit merchant list becomes allowed_merchants and allowed_payees constraints", () => {
+    const open = openMandatesFor(policy, { providerKey: provider, agentKey: agent, now: NOW, allowedMerchants: [{ id: "acme-supplies", name: "Acme Supplies" }] });
+    expect(open.checkoutOpen.mandate.constraints).toEqual([{ type: "checkout.allowed_merchants", allowed: [{ id: "acme-supplies", name: "Acme Supplies" }] }]);
+    expect(open.paymentOpen.mandate.constraints).toContainEqual({ type: "payment.allowed_payees", allowed: [{ id: "acme-supplies", name: "Acme Supplies" }] });
   });
 
   it("the merchant's checkout is a UCP-shaped, ES256-signed JWT", () => {
@@ -108,8 +107,8 @@ describe("AP2 v0.2 mandates from a Mandate policy", () => {
     expect(r.checks.find((c) => c.id === "payment_constraints")).toMatchObject({ ok: false, detail: expect.stringMatching(/exceeds maximum 2500/) });
   });
 
-  it("a merchant not in the allowed list fails the checkout constraints", () => {
-    const { open } = setup();
+  it("a merchant not in an explicit allowed list fails the checkout constraints", () => {
+    const open = openMandatesFor(policy, { providerKey: provider, agentKey: agent, now: NOW, allowedMerchants: [{ id: "acme-supplies", name: "Acme Supplies" }] });
     const other = generateEs256("corner-mart");
     const c = merchantCheckout({ id: "cart_3", merchant: { id: "corner-mart", name: "Corner Mart" }, currency: "USD", items: [{ sku: "t", title: "Toilet roll", unitMinor: 649, qty: 1 }] }, other);
     const closed = closeAutonomous(open, c, { agentKey: agent, payee: { id: "corner-mart", name: "Corner Mart" }, now: NOW, nonce: "n" });

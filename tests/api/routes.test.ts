@@ -17,6 +17,10 @@ import { GET as listOrders } from "@/app/api/orders/route";
 import { POST as checkOrders } from "@/app/api/orders/check/route";
 import { POST as simulateOrder } from "@/app/api/orders/[id]/simulate/route";
 import { POST as dispute } from "@/app/api/orders/[id]/dispute/route";
+import { GET as ap2Order } from "@/app/api/ap2/orders/[orderId]/route";
+import { GET as ap2Jwks } from "@/app/api/ap2/jwks/route";
+import { GET as verifyOrder } from "@/app/api/verify/[orderId]/route";
+import { GET as trust } from "@/app/api/trust/route";
 
 const BASE = "http://localhost:3000";
 const post = (path: string, body: unknown) =>
@@ -228,6 +232,25 @@ describe("API: delivery follow-through and disputes", () => {
     expect((await dispute(post(`/api/orders/${order.id}/dispute`, { action: "file", confirm: true }), params(order.id))).status).toBe(409);
   });
 
+  it("the buyer's own wording is what gets filed; a too-short statement is refused with 400", async () => {
+    const { mandateId, order } = await paidOrder();
+    await simulateOrder(post(`/api/orders/${order.id}/simulate`, { event: "lost" }), params(order.id));
+    await checkOrders(post(`/api/orders/check`, { mandateId }));
+    await dispute(post(`/api/orders/${order.id}/dispute`, { action: "draft" }), params(order.id));
+    expect((await dispute(post(`/api/orders/${order.id}/dispute`, { action: "edit", statement: "too short" }), params(order.id))).status).toBe(400);
+    const mine = `Order ${order.id} never arrived; the carrier lost it. Please refund me in full.`;
+    const edited = await dispute(post(`/api/orders/${order.id}/dispute`, { action: "edit", statement: mine }), params(order.id));
+    expect(await edited.json()).toMatchObject({ statement: mine, writer: "user", status: "draft" });
+  });
+
+  it("the dispute evidence carries the AP2 v0.2 mandates and receipts", async () => {
+    const { mandateId, order } = await paidOrder();
+    await simulateOrder(post(`/api/orders/${order.id}/simulate`, { event: "lost" }), params(order.id));
+    await checkOrders(post(`/api/orders/check`, { mandateId }));
+    const d = (await (await dispute(post(`/api/orders/${order.id}/dispute`, { action: "draft" }), params(order.id))).json()) as { evidence: { ap2: { ap2_v0_2: Record<string, unknown> } } };
+    expect(d.evidence.ap2.ap2_v0_2).toMatchObject({ spec: "ap2/0.2", ok: true, mode: "human_not_present", checkoutJwt: expect.any(String), paymentReceipt: expect.any(String) });
+  });
+
   it("refuses to draft a dispute for a parcel with no problem", async () => {
     const { order } = await paidOrder();
     expect((await dispute(post(`/api/orders/${order.id}/dispute`, { action: "draft" }), params(order.id))).status).toBe(409);
@@ -236,6 +259,29 @@ describe("API: delivery follow-through and disputes", () => {
   it("404s an unknown order", async () => {
     expect((await simulateOrder(post(`/api/orders/nope/simulate`, { event: "lost" }), params("nope"))).status).toBe(404);
     expect((await dispute(post(`/api/orders/nope/dispute`, { action: "draft" }), params("nope"))).status).toBe(404);
+  });
+});
+
+describe("API: AP2 v0.2 verification", () => {
+  it("serves the evidence pack and verdict for an agent payment, and the JWKS to check it", async () => {
+    const id = await newMandate();
+    await run(id, "Buy washing-up liquid");
+    const [o] = (await (await listOrders(get(`/api/orders?mandateId=${id}`))).json()) as Array<{ id: string }>;
+    const res = await ap2Order(get(`/api/ap2/orders/${o!.id}`), { params: Promise.resolve({ orderId: o!.id }) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; spec: string; checks: Array<{ id: string; ok: boolean }>; evidence: Record<string, unknown> };
+    expect(body).toMatchObject({ spec: "ap2/0.2", ok: true });
+    expect(body.checks.map((c) => c.id)).toEqual(expect.arrayContaining(["checkout_signed", "checkout_chain", "payment_chain", "payment_constraints", "checkout_receipt", "payment_receipt"]));
+    const jwks = (await (await ap2Jwks()).json()) as { keys: Array<{ kid: string; kty: string; crv: string }> };
+    expect(jwks.keys.map((k) => k.kid)).toEqual(expect.arrayContaining(["mandate-provider", "mandate-agent", "mandate-gateway", "merchant:acme-supplies"]));
+    expect(jwks.keys.every((k) => k.kty === "EC" && k.crv === "P-256")).toBe(true);
+    const v = (await (await verifyOrder(get(`/api/verify/${o!.id}`), { params: Promise.resolve({ orderId: o!.id }) })).json()) as { ok: boolean; ap2: { ok: boolean } };
+    expect(v).toMatchObject({ ok: true, ap2: { ok: true } });
+    expect(((await (await trust()).json()) as { ap2: { keys: unknown[] } }).ap2.keys.length).toBeGreaterThan(3);
+  });
+
+  it("404s an order with no AP2 evidence", async () => {
+    expect((await ap2Order(get(`/api/ap2/orders/NOPE`), { params: Promise.resolve({ orderId: "NOPE" }) })).status).toBe(404);
   });
 });
 

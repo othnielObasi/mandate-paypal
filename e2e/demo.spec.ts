@@ -187,16 +187,22 @@ test("the mandate is signed by the user (AP2 Intent Mandate)", async ({ page }) 
   await expect(page.getByText(/Signed by you · Intent Mandate/)).toBeVisible();
 });
 
-test("seller view: an agent payment is shown as backed by the buyer's signed mandate", async ({ page }) => {
+test("seller view: an agent payment is verified under AP2 v0.2 and backed by the buyer's signed mandate", async ({ page }) => {
   await newMandate(page);
   await runAgent(page, "Buy washing-up liquid");
   await page.goto("/app/orders");
   await page.getByRole("link", { name: "Check as the seller" }).first().click();
   const detail = page.getByTestId("seller-detail");
   await expect(detail).toContainText("Safe to fulfil");
-  for (const check of ["Intent Mandate signed by the user", "Cart Mandate signed by the merchant", "Payment attested by the Mandate gateway", "PayPal order carries this payment mandate"]) {
+  await expect(detail).toContainText("AP2 v0.2");
+  for (const check of ["Checkout signed by the merchant", "Checkout Mandate chain verifies", "Payment within the user's open Payment Mandate", "Merchant's checkout receipt", "Payment receipt from the payment gateway"]) {
     await expect(detail).toContainText(check);
   }
+  // The original Mandate v1 chain still verifies alongside.
+  for (const check of ["Intent Mandate signed by the user", "PayPal order carries this payment mandate"]) {
+    await expect(detail).toContainText(check);
+  }
+  await expect(detail.getByRole("link", { name: "Download AP2 evidence pack" })).toHaveAttribute("href", /\/api\/ap2\/orders\//);
   await expect(page.getByTestId("seller-grid")).toContainText("Safe to fulfil");
 });
 

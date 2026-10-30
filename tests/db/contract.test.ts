@@ -190,6 +190,14 @@ function contract(name: string, setup: () => Promise<{ fresh: () => Promise<Stor
       expect(await s.credentials.getByOrder("PP-1")).toMatchObject({ paymentMandateId: "pm_1", paypalOrderId: "PP-1", cart: { contents: { id: "cart_1" } } });
       expect((await s.credentials.list("m1")).length).toBe(1);
       await expect(s.credentials.attachOrder("nope", "x")).rejects.toThrow();
+
+      // AP2 v0.2 evidence is replaced whole (e.g. receipts added after capture).
+      const ap2 = { spec: "ap2/0.2" as const, mode: "human_not_present" as const, checkoutJwt: "h.p.s", checkoutChain: "a~", paymentChain: "b~", context: { totalAmount: 0, totalUses: 0 } };
+      await s.credentials.setAp2("pm_1", ap2);
+      await s.credentials.setAp2("pm_1", { ...ap2, paymentReceipt: "r.r.r" });
+      expect((await s.credentials.getByOrder("PP-1"))?.ap2).toEqual({ ...ap2, paymentReceipt: "r.r.r" });
+      expect((await s.credentials.getByOrder("PP-1"))?.paypalOrderId).toBe("PP-1");
+      await expect(s.credentials.setAp2("nope", ap2)).rejects.toThrow();
     });
 
     it("connections: look up by token hash, list, revoke once", async () => {

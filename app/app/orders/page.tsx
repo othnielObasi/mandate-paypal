@@ -228,9 +228,14 @@ function OrderCard({ o, busy, run, save }: { o: OrderView; busy: boolean; run: R
                 <li>
                   <Shield size={18} />
                   <span>
-                    <strong>Your signed mandate chain</strong>
+                    <strong>AP2 v0.2 mandates and receipts</strong>
                     <br />
-                    <span className="small">Intent, cart and payment mandates</span>
+                    <span className="small">
+                      Checkout and payment mandates, signed checkout, receipts ·{" "}
+                      <a href={`/api/ap2/orders/${encodeURIComponent(o.id)}`} download={`ap2-evidence-${o.id}.json`}>
+                        download
+                      </a>
+                    </span>
                   </span>
                 </li>
                 <li>

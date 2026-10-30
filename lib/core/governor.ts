@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { Credentials } from "../ap2/credentials";
 import { mandateHash, paymentFingerprint } from "../ap2/mandates";
 import type { CredentialStore } from "../ap2/store";
+import { publicJwk } from "../ap2v2/es256";
+import { checkoutReceipt, checkPaymentConstraints, closeApproved, closeAutonomous, merchantCheckout, openMandatesFor, paymentReceipt } from "../ap2v2/mandates";
+import type { Ap2PurchaseRecord } from "../ap2v2/records";
+import { verifyChain } from "../ap2v2/sdjwt";
 import { orderDigest, orderTotalMinor } from "../gate/canonical";
 import { evaluate } from "../gate/evaluate";
 import type { Signer } from "../gate/keys";
@@ -59,14 +63,20 @@ export class Governor {
     if (!parsed.ok) throw new Error(`Invalid policy: ${parsed.error}`);
     const now = this.d.clock();
     const base = { id: randomUUID(), userId: input.userId, policy: parsed.value, status: "active" as const, rawText: input.rawText, createdAt: now.toISOString() };
-    const m: MandateRecord = { ...base, intentMandate: this.d.credentials.signIntent(base, now) };
+    const keys = this.d.credentials.ap2;
+    const open = openMandatesFor(parsed.value, { providerKey: keys.provider, agentKey: keys.agent, now: Math.floor(now.getTime() / 1000) });
+    const m: MandateRecord = {
+      ...base,
+      intentMandate: this.d.credentials.signIntent(base, now),
+      ap2: { spec: "ap2/0.2", checkoutOpen: open.checkoutOpen.token, paymentOpen: open.paymentOpen.token, openCheckoutHash: open.openCheckoutHash },
+    };
     await this.d.mandates.save(m);
     const p = m.policy;
     await this.d.receipts.append({
       mandateId: m.id,
       type: "mandate",
       summary: `Mandate created and signed: ${p.categories.join(", ")}; up to ${formatMoney(p.maxItemMinor, p.currency)} per item, ${formatMoney(p.budget.amountMinor, p.currency)} per ${p.budget.period}`,
-      payload: { policy: p, rawText: input.rawText, intentMandateHash: mandateHash(m.intentMandate!.contents) },
+      payload: { policy: p, rawText: input.rawText, intentMandateHash: mandateHash(m.intentMandate!.contents), ap2OpenCheckoutHash: open.openCheckoutHash },
     });
     return m;
   }
@@ -110,6 +120,21 @@ export class Governor {
     });
     if (choice === "decline") return { status: "declined" };
     return this.run(a.proposal, true);
+  }
+
+  /** After PayPal confirms a capture: the merchant and the payment gateway issue AP2 receipts. */
+  async recordCapture(p: { paymentMandateId?: string; paypalOrderId: string; captureId: string; order: { mandateId: string; merchantId: string } }) {
+    if (!p.paymentMandateId) return;
+    const rec = (await this.d.credentialStore.list(p.order.mandateId)).find((r) => r.paymentMandateId === p.paymentMandateId);
+    if (!rec?.ap2 || rec.ap2.paymentReceipt) return;
+    const keys = this.d.credentials.ap2;
+    const now = Math.floor(this.d.clock().getTime() / 1000);
+    const merchantKey = keys.merchant(p.order.merchantId);
+    await this.d.credentialStore.setAp2(rec.paymentMandateId, {
+      ...rec.ap2,
+      checkoutReceipt: checkoutReceipt(rec.ap2.checkoutChain, { orderId: p.paypalOrderId, issuer: merchantKey.kid!, key: merchantKey, now }),
+      paymentReceipt: paymentReceipt(rec.ap2.paymentChain, { paypalOrderId: p.paypalOrderId, captureId: p.captureId, issuer: keys.gateway.kid!, key: keys.gateway, now }),
+    });
   }
 
   /** Market reference for the whole cart (each line's unit reference × qty), or null if any line has none. */
@@ -210,7 +235,31 @@ export class Governor {
     const pm = this.d.credentials.signPayment(mandate.intentMandate!, q.cart, mode, mandate.userId, now);
     const pmId = pm.payment_mandate_contents.payment_mandate_id;
     const fingerprint = paymentFingerprint(pm);
-    await this.d.credentialStore.put({ paymentMandateId: pmId, mandateId: mandate.id, paypalOrderId: null, cart: q.cart, payment: pm, fingerprint, createdAt: now.toISOString() });
+
+    // AP2 v0.2: the merchant signs the checkout; the agent (or the user, when they approved) closes the mandates.
+    let ap2: Ap2PurchaseRecord | undefined;
+    if (mandate.ap2) {
+      const keys = this.d.credentials.ap2;
+      const s = Math.floor(now.getTime() / 1000);
+      const checkout = merchantCheckout(
+        { id: q.cart.contents.id, merchant: { id: order.merchantId, name: q.merchant.name }, currency: order.currency, items: order.items.map((i) => ({ sku: i.sku, title: i.title, unitMinor: i.unitMinor, qty: i.qty })) },
+        keys.merchant(order.merchantId),
+      );
+      const payee = { id: order.merchantId, name: q.merchant.name };
+      const prior = (await this.d.credentialStore.list(mandate.id)).filter((r) => r.ap2?.mode === "human_not_present");
+      const context = { totalAmount: spentMinor + reservedMinor, totalUses: prior.length };
+      const closed = approved
+        ? closeApproved(checkout, { userKey: keys.user(mandate.userId), payee, now: s })
+        : closeAutonomous({ checkoutOpen: { token: mandate.ap2.checkoutOpen }, paymentOpen: { token: mandate.ap2.paymentOpen } }, checkout, { agentKey: keys.agent, payee, now: s, nonce: intent.id });
+      if (!approved) {
+        // Defence in depth: the payment must satisfy the user's AP2 open mandate, checked as a verifier would.
+        const [openPayment, closedPayment] = verifyChain(closed.paymentChain, () => publicJwk(keys.provider), { now: s });
+        const violations = checkPaymentConstraints(openPayment!, closedPayment!, { openCheckoutHash: mandate.ap2.openCheckoutHash, context });
+        if (violations.length) return this.logBlock(mandate.id, block("credentials", `The purchase is outside your signed AP2 mandate: ${violations.join("; ")}`), "AP2 mandate check");
+      }
+      ap2 = { spec: "ap2/0.2", mode: closed.mode, checkoutJwt: checkout.jwt, checkoutChain: closed.checkoutChain, paymentChain: closed.paymentChain, context };
+    }
+    await this.d.credentialStore.put({ paymentMandateId: pmId, mandateId: mandate.id, paypalOrderId: null, cart: q.cart, payment: pm, fingerprint, createdAt: now.toISOString(), ...(ap2 ? { ap2 } : {}) });
 
     const permit = issuePermit({ intentId: intent.id, mandateId: mandate.id, digest, amountMinor, currency: order.currency, now }, this.d.signer);
     await this.d.permits.save(permit);

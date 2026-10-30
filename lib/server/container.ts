@@ -17,6 +17,7 @@ import { DEMO_CATALOG, Catalog } from "../merchant/catalog";
 import { CatalogMerchants, DEMO_MERCHANTS, type Merchants } from "../merchant/merchants";
 import { Credentials } from "../ap2/credentials";
 import { checkPayment } from "../ap2/check";
+import { checkAp2Order } from "../ap2v2/check";
 import { Channel3Oracle, SimulatedMarket, type PriceOracle } from "../market/oracle";
 import { AgentSession } from "../agent/tools";
 import { McpSessions, type McpDeps } from "../mcp/server";
@@ -126,9 +127,16 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     clock,
     ap2Evidence: async (paypalOrderId) => {
       const v = await checkPayment({ stores, mandates, credentials, merchants, executor }, paypalOrderId, clock());
-      return v
-        ? { intent_mandate: v.chain.intent, cart_mandate: v.chain.cart, payment_mandate: v.chain.payment, verification: { ok: v.ok, checks: v.checks } }
-        : null;
+      if (!v) return null;
+      const ap2 = await checkAp2Order({ credentials: stores.credentials, mandates, keys: credentials.ap2 }, paypalOrderId);
+      return {
+        intent_mandate: v.chain.intent,
+        cart_mandate: v.chain.cart,
+        payment_mandate: v.chain.payment,
+        verification: { ok: v.ok, checks: v.checks },
+        // AP2 v0.2 dispute evidence: checkout + payment mandates and receipts, verifiable with /api/ap2/jwks.
+        ap2_v0_2: ap2 ? { ...ap2.evidence, ok: ap2.ok, checks: ap2.checks } : null,
+      };
     },
   });
   const executor = new Executor({
@@ -139,7 +147,10 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     publicKey: signer.publicKey,
     clock,
     urls: { returnUrl: `${appUrl}/api/paypal/return`, cancelUrl: `${appUrl}/api/paypal/cancel` },
-    onPaid: (p) => fulfilment.onPaid(p),
+    onPaid: async (p) => {
+      await fulfilment.onPaid(p);
+      await governor.recordCapture(p);
+    },
     pending: stores.pending,
   });
   const catalog = new Catalog(DEMO_CATALOG);

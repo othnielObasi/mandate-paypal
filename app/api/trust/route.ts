@@ -8,5 +8,5 @@ export const runtime = "nodejs";
 /** Public keys needed to verify any mandate chain: the gateway, the merchants (with verified status) and users. */
 export async function GET() {
   const c = getContainer();
-  return json(c.credentials.trust(c.merchants, [DEMO_USER]));
+  return json({ ...c.credentials.trust(c.merchants, [DEMO_USER]), ap2: c.credentials.ap2.jwks(Object.keys(c.merchants.directory()), [DEMO_USER]) });
 }

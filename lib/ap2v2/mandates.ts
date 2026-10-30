@@ -8,9 +8,13 @@
  * directly with the user's key (human present). Merchants sign the checkout as
  * an ES256 JWT; merchants and the payment gateway return signed receipts.
  *
- * Mandate-only rules (categories, fair price, untrusted-content origin) are
- * enforced by the gate before anything is signed; they are not put in open
- * mandates because verifiers must reject constraints they do not know.
+ * Open mandates carry only what is fixed when the user signs: the per-order
+ * cap, the budget and its period, and the link between the two mandates.
+ * Rules that depend on live data (verified sellers, blocked sellers) or have
+ * no standard AP2 constraint (categories, fair price, untrusted-content
+ * origin) are enforced by Mandate's gate before anything is signed: a fixed
+ * merchant list would wrongly block sellers verified after signing, and
+ * verifiers must reject constraints they do not know.
  */
 import type { Policy } from "../gate/policy";
 import { decodeJws, sha256b64url, signJws, verifyJws, type Es256Key, type PublicJwk, publicJwk } from "./es256";
@@ -42,14 +46,13 @@ const FREQ = { week: "WEEKLY", month: "MONTHLY" } as const;
 /** Open Checkout + Payment Mandates expressing `policy` in AP2's standard constraints. */
 export function openMandatesFor(
   policy: Policy,
-  merchants: ReadonlyArray<{ id: string; name: string; verified: boolean }>,
-  o: { providerKey: Es256Key; agentKey: Es256Key; now: number; description?: string },
+  o: { providerKey: Es256Key; agentKey: Es256Key; now: number; allowedMerchants?: Merchant[] },
 ): OpenMandates {
-  const allowed = merchants.filter((m) => (!policy.sellers.verifiedOnly || m.verified) && !policy.sellers.blocked.includes(m.id)).map((m) => ({ id: m.id, name: m.name }));
+  const allowed = o.allowedMerchants;
   const exp = Math.floor(Date.parse(`${policy.expires}T23:59:59Z`) / 1000);
   const cnf = { jwk: publicJwk(o.agentKey) };
 
-  const checkoutMandate: Json = { vct: VCT.checkoutOpen, constraints: [{ type: "checkout.allowed_merchants", allowed: allowed.map((m) => sd(m)) }], cnf, iat: o.now, exp };
+  const checkoutMandate: Json = { vct: VCT.checkoutOpen, constraints: allowed ? [{ type: "checkout.allowed_merchants", allowed: allowed.map((m) => sd(m)) }] : [], cnf, iat: o.now, exp };
   const checkoutToken = issueRoot(checkoutMandate, o.providerKey);
   const openCheckoutHash = sha256b64url(parseChain(checkoutToken)[0]!.sdJwt);
 
@@ -57,15 +60,14 @@ export function openMandatesFor(
     { type: "payment.amount_range", currency: policy.currency, min: 0, max: policy.maxItemMinor },
     { type: "payment.budget", currency: policy.currency, max: policy.budget.amountMinor / 100 },
     { type: "payment.agent_recurrence", frequency: FREQ[policy.budget.period] },
-    { type: "payment.allowed_payees", allowed: allowed.map((m) => sd(m)) },
+    ...(allowed ? [{ type: "payment.allowed_payees", allowed: allowed.map((m) => sd(m)) }] : []),
     { type: "payment.reference", conditional_transaction_id: openCheckoutHash },
   ];
   const paymentMandate = { vct: VCT.paymentOpen, constraints, cnf, iat: o.now, exp };
   const paymentToken = issueRoot(paymentMandate, o.providerKey);
 
-  const plain = (m: Json) => JSON.parse(JSON.stringify(m, (_k, v) => (v && typeof v === "object" && "value" in v && Object.getOwnPropertySymbols(v).length ? v.value : v))) as Json;
   return {
-    checkoutOpen: { token: checkoutToken, mandate: { ...plain(checkoutMandate), constraints: [{ type: "checkout.allowed_merchants", allowed }] } },
+    checkoutOpen: { token: checkoutToken, mandate: { ...checkoutMandate, constraints: allowed ? [{ type: "checkout.allowed_merchants", allowed }] : [] } },
     paymentOpen: { token: paymentToken, mandate: { ...paymentMandate, constraints: constraints.map((c) => (c.type === "payment.allowed_payees" ? { ...c, allowed } : c)) } },
     openCheckoutHash,
   };
@@ -108,7 +110,7 @@ function closedPair(checkout: { jwt: string; hash: string; total: number }, paye
 const currencyOf = (jwt: string) => String(decodeJws(jwt).payload.currency ?? "USD");
 
 /** Human not present: Mandate's agent closes both open mandates (KB-SD-JWT hops). */
-export function closeAutonomous(open: OpenMandates, checkout: { jwt: string; hash: string; total: number }, o: { agentKey: Es256Key; payee: Merchant; now: number; nonce: string }) {
+export function closeAutonomous(open: { checkoutOpen: { token: string }; paymentOpen: { token: string } }, checkout: { jwt: string; hash: string; total: number }, o: { agentKey: Es256Key; payee: Merchant; now: number; nonce: string }) {
   const { checkoutMandate, paymentMandate } = closedPair(checkout, o.payee, currencyOf(checkout.jwt));
   return {
     mode: "human_not_present" as const,

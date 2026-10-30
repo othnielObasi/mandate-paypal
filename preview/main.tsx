@@ -16,6 +16,7 @@ import OrdersPage from "../app/app/orders/page";
 import AssistantsPage from "../app/app/assistants/page";
 import ReceiptsPage from "../app/app/receipts/page";
 import SellerPage from "../app/seller/page";
+import DevelopersPage from "../app/developers/page";
 import { RouterProvider, useRouterState } from "./router";
 import { dispatch, installFetch, toUrl } from "./server";
 
@@ -37,6 +38,7 @@ const TITLES: Record<string, string> = {
   "/app/assistants": "Assistants · Mandate",
   "/app/receipts": "Receipts · Mandate",
   "/seller": "Seller check · Mandate",
+  "/developers": "Developers · Mandate",
 };
 
 /** Plain <a href="/…"> links (not next/link): route app paths in-page, open /api resources as files. */
@@ -75,6 +77,7 @@ function Screen() {
   }, [pathname]);
 
   if (pathname === "/seller") return <SellerPage />;
+  if (pathname === "/developers") return <DevelopersPage />;
   if (pathname.startsWith("/app")) {
     const Page = APP_PAGES[pathname] ?? HomePage;
     return (

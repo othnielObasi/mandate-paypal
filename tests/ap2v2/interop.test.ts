@@ -57,8 +57,7 @@ describe.skipIf(!PY)("interop with the AP2 reference SDK", () => {
     const now = Math.floor(Date.now() / 1000);
     const open = openMandatesFor(
       { categories: ["household"], currency: "USD", maxItemMinor: 2500, budget: { amountMinor: 8000, period: "month" }, sellers: { verifiedOnly: true, blocked: [] }, overLimit: "ask", expires: "2099-01-31" },
-      [{ id: "acme-supplies", name: "Acme Supplies", verified: true }],
-      { providerKey: provider, agentKey: agent, now },
+      { providerKey: provider, agentKey: agent, now, allowedMerchants: [{ id: "acme-supplies", name: "Acme Supplies" }] },
     );
     const checkout = merchantCheckout({ id: "cart_1", merchant: { id: "acme-supplies", name: "Acme Supplies" }, currency: "USD", items: [{ sku: "wul-500", title: "Eco washing-up liquid 500ml", unitMinor: 450, qty: 1 }] }, merchantKey);
     const closed = closeAutonomous(open, checkout, { agentKey: agent, payee: { id: "acme-supplies", name: "Acme Supplies" }, now, nonce: "n1" });

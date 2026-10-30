@@ -1,3 +1,4 @@
+import type { Ap2PurchaseRecord } from "../ap2v2/records";
 import { MemoryConnectionStore, type ConnectionRecord, type ConnectionStore } from "../mcp/connections";
 import { MemoryCredentialStore, type CredentialRecord, type CredentialStore } from "../ap2/store";
 import { MemoryEventStore, MemoryPendingStore, type EventStore, type PendingPayment, type PendingStore } from "../core/pending";
@@ -298,6 +299,10 @@ class PgCredentials implements CredentialStore {
   }
   async getByOrder(paypalOrderId: string) {
     return one(await this.db.q<Doc<CredentialRecord>>(`SELECT data FROM credentials WHERE paypal_order_id = $1`, [paypalOrderId]));
+  }
+  async setAp2(id: string, ap2: Ap2PurchaseRecord) {
+    const rows = await this.db.q(`UPDATE credentials SET data = jsonb_set(data, '{ap2}', $2::jsonb) WHERE payment_mandate_id = $1 RETURNING payment_mandate_id`, [id, toJson(ap2)]);
+    if (rows.length === 0) throw new Error("payment mandate not found");
   }
   async list(mandateId?: string) {
     return all(

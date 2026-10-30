@@ -20,6 +20,7 @@ export default function Landing() {
             <a href="#safety">Safety</a>
             <a href="#sellers">For sellers</a>
             <a href="#assistants">Any assistant</a>
+            <NextLink href="/developers">Developers</NextLink>
           </nav>
           <div className="row">
             <a className="btn btn-ghost hide-sm" href={REPO} target="_blank" rel="noreferrer">
@@ -66,7 +67,7 @@ export default function Landing() {
               <Check size={16} /> PayPal Agent Toolkit
             </span>
             <span>
-              <Check size={16} /> AP2-style signed mandates
+              <Check size={16} /> AP2 v0.2 mandates, tested against Google&rsquo;s reference SDK
             </span>
             <span>
               <Check size={16} /> Model Context Protocol
@@ -241,11 +242,11 @@ export default function Landing() {
               <h2 id="sellers-h" style={{ fontSize: "clamp(28px, 3.6vw, 40px)" }}>
                 Know an agent&rsquo;s payment was really authorised
               </h2>
-              <p className="lede mt-16">Every agent payment carries a chain of signed mandates: the customer&rsquo;s intent, your cart, and the payment. Its fingerprint rides on the PayPal order itself, so you can check it with public keys before you ship.</p>
+              <p className="lede mt-16">Every agent payment carries AP2 v0.2 mandates: the customer&rsquo;s signed limits, your signed checkout, the agent&rsquo;s closed mandates and signed receipts. Check them with public keys before you ship, or hand the evidence pack to a dispute reviewer.</p>
               <ul className="bullets">
                 <li>
                   <Check size={20} />
-                  <span>Nine independent checks, no trust in Mandate required</span>
+                  <span>Checks follow the AP2 specification&rsquo;s dispute rules; no trust in Mandate required</span>
                 </li>
                 <li>
                   <Check size={20} />
@@ -256,9 +257,14 @@ export default function Landing() {
                   <span>Unbacked payments flagged before fulfilment</span>
                 </li>
               </ul>
-              <NextLink href="/seller" className="btn btn-lg mt-24" style={{ background: "#fff", color: "#0f172a", borderColor: "#fff" }}>
-                Open the seller check
-              </NextLink>
+              <div className="row mt-24">
+                <NextLink href="/seller" className="btn btn-lg" style={{ background: "#fff", color: "#0f172a", borderColor: "#fff" }}>
+                  Open the seller check
+                </NextLink>
+                <NextLink href="/developers" className="btn btn-lg btn-ghost" style={{ color: "#fff" }}>
+                  Verification API
+                </NextLink>
+              </div>
             </div>
             <div className="card" style={{ background: "var(--night-2)", borderColor: "rgba(255,255,255,.1)", color: "var(--night-ink)" }}>
               <div className="row" style={{ gap: 14, flexWrap: "nowrap" }}>
@@ -272,10 +278,10 @@ export default function Landing() {
               </div>
               <ol className="mt-24" style={{ listStyle: "none", margin: "24px 0 0", padding: 0, display: "grid", gap: 10 }}>
                 {[
-                  ["Intent Mandate", "Signed by the customer"],
-                  ["Cart Mandate", "Signed by Acme Supplies"],
+                  ["Your checkout", "Signed by Acme Supplies"],
+                  ["Checkout Mandate", "Signed by the customer"],
                   ["Payment Mandate", "Approved on the customer's phone"],
-                  ["PayPal order", "Carries the mandate fingerprint"],
+                  ["Receipts", "Signed by you and the payment gateway"],
                 ].map(([a, b]) => (
                   <li key={a} className="row between" style={{ padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,.1)" }}>
                     <span>
@@ -384,12 +390,13 @@ export default function Landing() {
               <Mark size={24} />
               Mandate
             </span>
-            <span>Sandbox demo. No real money moves. An independent open-source project, not affiliated with or endorsed by PayPal.</span>
+            <span>Sandbox demo. No real money moves. An independent open-source project, not affiliated with or endorsed by PayPal or Google.</span>
           </div>
           <nav aria-label="Footer">
             <NextLink href="/app">App</NextLink>
             <NextLink href="/seller">Seller check</NextLink>
-            <a href="/api/trust">Public keys</a>
+            <NextLink href="/developers">Developers</NextLink>
+            <a href="/api/ap2/jwks">Public keys</a>
             <a href={REPO} target="_blank" rel="noreferrer">
               GitHub
             </a>

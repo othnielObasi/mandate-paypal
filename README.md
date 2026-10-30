@@ -63,6 +63,19 @@ agent         ─┘   (provenance tracked)                                    �
 
 Field names follow the AP2 spec's examples ([ap2-protocol.org](https://ap2-protocol.org/a2a-extension)). Mandate is **aligned with** AP2, not certified against it.
 
+## AP2 v0.2
+
+Every purchase also carries mandates in the current [AP2 specification](https://github.com/google-agentic-commerce/AP2) (v0.2):
+
+- **When you sign your rules**, Mandate (as AP2 "Trusted Agent Provider") issues an open Checkout Mandate and an open Payment Mandate as SD-JWTs (ES256). The payment mandate carries the standard constraints: `payment.amount_range` (per-order cap), `payment.budget` with `payment.agent_recurrence` (budget per week or month), and `payment.reference` to the open checkout mandate. Both delegate (`cnf`) to Mandate's agent key.
+- **On each in-policy purchase** the merchant signs the checkout (a UCP checkout object, ES256 JWT), and the agent closes both mandates with key-binding hops bound to that checkout's hash. **Purchases you approve** are closed with your key instead (human present).
+- **After PayPal captures**, the merchant and Mandate's payment gateway issue signed checkout and payment receipts.
+- **Verification** follows the spec's dispute rules: `GET /api/ap2/orders/{paypalOrderId}` returns the evidence pack and verdict; `GET /api/ap2/jwks` publishes the keys. See `/developers` in the app.
+
+Rules that depend on live data (verified or blocked sellers) or have no standard AP2 constraint (categories, fair price, untrusted-content origin) are enforced by Mandate's gate before anything is signed; verifiers must reject constraints they do not know, and a frozen merchant list would wrongly block sellers verified later.
+
+Interoperability is tested against Google's AP2 reference SDK (pinned in CI): it verifies Mandate-built purchases with no violations, agrees on budget enforcement, and Mandate verifies chains the reference SDK produces (`tests/ap2v2/interop.test.ts`, run with `AP2_PYTHON` set). The original Mandate v1 credentials (Ed25519) are still issued and verified alongside.
+
 ## Connect your own AI assistant (MCP)
 
 1. In the Agent panel, under **Connect another AI assistant**, name it and press **Create connection URL**. The URL is shown once.

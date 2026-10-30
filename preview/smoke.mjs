@@ -85,7 +85,8 @@ async function run(viewport, tag) {
     await p.getByRole("link", { name: "Check as the seller" }).first().click();
   }
   await p.getByTestId("seller-grid").locator(".ag-row").first().click();
-  await p.getByTestId("seller-detail").getByText("checks passed").waitFor();
+  await p.getByTestId("seller-detail").getByRole("heading", { name: /AP2 checks passed/ }).waitFor();
+  if (!(await p.getByTestId("seller-detail").textContent()).includes("Safe to fulfil")) fail(`${tag}: seller verdict not safe`);
   await shot("seller");
   await ctx.close();
 }

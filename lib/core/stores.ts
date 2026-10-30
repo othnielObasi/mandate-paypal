@@ -1,3 +1,4 @@
+import type { Ap2OpenRecord } from "../ap2v2/records";
 import type { IntentMandate } from "../ap2/mandates";
 import type { OrderSpec } from "../gate/canonical";
 import type { Decision, Intent, Mandate, MandateStatus } from "../gate/types";
@@ -7,6 +8,8 @@ export interface MandateRecord extends Mandate {
   createdAt: string;
   /** AP2-style Intent Mandate: the user's signature over these exact limits. */
   intentMandate?: IntentMandate;
+  /** AP2 v0.2 open Checkout and Payment Mandates (SD-JWT), issued when the user signs. */
+  ap2?: Ap2OpenRecord;
 }
 
 export interface MandateStore {

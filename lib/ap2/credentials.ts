@@ -1,3 +1,4 @@
+import { Ap2Keys } from "../ap2v2/keys";
 import { canonicalJson } from "../gate/canonical";
 import type { Signer } from "../gate/keys";
 import type { Policy } from "../gate/policy";
@@ -15,7 +16,13 @@ import type { TrustStore } from "./verify";
  */
 export class Credentials {
   private users = new Map<string, Signer>();
-  constructor(private root: Signer) {}
+  /** ES256 keys for AP2 v0.2, derived from the same root secret. */
+  readonly ap2: Ap2Keys;
+  constructor(private root: Signer) {
+    const jwk = root.privateKey.export({ format: "jwk" }) as { d?: string };
+    if (!jwk.d) throw new Error("root key must be Ed25519");
+    this.ap2 = new Ap2Keys(new Uint8Array(Buffer.from(jwk.d, "base64url")));
+  }
 
   get platformKey() {
     return this.root.publicKey;
