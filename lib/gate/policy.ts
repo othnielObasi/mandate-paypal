@@ -39,6 +39,11 @@ export const PolicySchema = z
     expires: isoDate,
     /** Optional: never pay more than this % above the market reference price. */
     maxPremiumPct: z.number().int().min(0).max(200).nullable().optional(),
+    /**
+     * What to do when no market price can be found to check against (signed with the rest):
+     * ask the user (default), block, or buy anyway.
+     */
+    marketUnavailable: z.enum(["ask", "block", "allow"]).optional(),
   })
   .strict()
   .refine((p) => p.maxItemMinor <= p.budget.amountMinor, {

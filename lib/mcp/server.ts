@@ -168,6 +168,7 @@ async function callTool(d: McpDeps, s: Session, conn: ConnectionRecord, name: st
       `Mandate status: ${b.mandate.status}. Categories: ${p.categories.join(", ")}. ` +
       `Up to ${m(p.maxItemMinor)} per item (above that: ${p.overLimit === "ask" ? "the user must approve" : "refused"}). ` +
       `Budget ${m(p.budget.amountMinor)} per ${p.budget.period}: ${m(b.spentMinor)} spent, ${m(b.reservedMinor)} held, ${m(b.remainingMinor)} left this ${p.budget.period}. ` +
+      `${p.maxPremiumPct == null ? "" : `Never more than ${p.maxPremiumPct}% above market price (if no market price is found: ${{ ask: "the user must approve", block: "refused", allow: "allowed" }[p.marketUnavailable ?? "ask"]}). `}` +
       `${p.sellers.verifiedOnly ? "Verified sellers only." : "Any seller."} Expires ${p.expires}.`;
     return { content: [{ type: "text", text }], structuredContent: { status: b.mandate.status, policy: p, spentMinor: b.spentMinor, reservedMinor: b.reservedMinor, remainingMinor: b.remainingMinor } };
   }

@@ -24,7 +24,14 @@ describe("policy form", () => {
       overLimit: "ask",
       expires: "2027-01-19",
       maxPremium: "",
+      marketUnavailable: "ask",
     });
+  });
+
+  it("signs the no-market-price choice only with a market rule", () => {
+    expect(formToPolicy({ ...policyToForm(policy), maxPremium: "10", marketUnavailable: "block" }, "USD")).toMatchObject({ ok: true, policy: { maxPremiumPct: 10, marketUnavailable: "block" } });
+    const off = formToPolicy({ ...policyToForm(policy), maxPremium: "", marketUnavailable: "block" }, "USD");
+    expect(off.ok && "marketUnavailable" in off.policy).toBe(false);
   });
 
   it("edits the market-price premium; blank means no market rule", () => {

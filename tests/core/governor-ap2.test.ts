@@ -149,12 +149,16 @@ describe("governor: market-price rule", () => {
     expect(r.status).toBe("paid"); // 3 × $4.50 = $13.50 vs 3 × $4.40 market: +2%
   });
 
-  it("pays normally when there is no market data, and says so in the record", async () => {
+  it("with no market data, does what the user signed: asks by default, blocks or buys if they chose so", async () => {
     const env = build("catalog", ref(null));
-    const m = await env.governor.createMandate({ userId: "u1", policy: { ...policy, maxPremiumPct: 10 }, rawText: "" });
-    expect((await env.governor.propose(prop(m.id, "wul-500"))).status).toBe("paid");
-    const d = (await env.receipts.list(m.id)).find((x) => x.type === "decision")!;
+    const asked = await env.governor.createMandate({ userId: "u1", policy: { ...policy, maxPremiumPct: 10 }, rawText: "" });
+    expect(await env.governor.propose(prop(asked.id, "wul-500"))).toMatchObject({ status: "pending_approval", decision: { rule: "market_price" } });
+    const d = (await env.receipts.list(asked.id)).find((x) => x.type === "decision")!;
     expect(d.payload).toMatchObject({ market: null });
+    const blocked = await env.governor.createMandate({ userId: "u1", policy: { ...policy, maxPremiumPct: 10, marketUnavailable: "block" }, rawText: "" });
+    expect(await env.governor.propose(prop(blocked.id, "wul-500"))).toMatchObject({ status: "blocked", decision: { rule: "market_price" } });
+    const allowed = await env.governor.createMandate({ userId: "u1", policy: { ...policy, maxPremiumPct: 10, marketUnavailable: "allow" }, rawText: "" });
+    expect((await env.governor.propose(prop(allowed.id, "wul-500"))).status).toBe("paid");
   });
 
   it("does not look up prices when the mandate has no market rule", async () => {

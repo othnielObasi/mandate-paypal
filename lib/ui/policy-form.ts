@@ -12,6 +12,8 @@ export interface PolicyForm {
   expires: string;
   /** Max % above the market price; blank = no market rule. */
   maxPremium: string;
+  /** When no market price can be found. */
+  marketUnavailable: "ask" | "block" | "allow";
 }
 
 const dollars = (minor: number) => (minor / 100).toFixed(2);
@@ -27,6 +29,7 @@ export function policyToForm(p: Policy): PolicyForm {
     overLimit: p.overLimit,
     expires: p.expires,
     maxPremium: p.maxPremiumPct === null || p.maxPremiumPct === undefined ? "" : String(p.maxPremiumPct),
+    marketUnavailable: p.marketUnavailable ?? "ask",
   };
 }
 
@@ -66,6 +69,7 @@ export function formToPolicy(f: PolicyForm, currency: Currency): { ok: true; pol
       overLimit: f.overLimit,
       expires: f.expires,
       maxPremiumPct: premium ? Number(premium) : null,
+      ...(premium ? { marketUnavailable: f.marketUnavailable } : {}),
     },
   };
 }

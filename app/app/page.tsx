@@ -214,7 +214,9 @@ function Dashboard({ mandate }: { mandate: Mandate }) {
               </li>
               <li>
                 <Check size={16} className="ok-ico" />
-                <span>{p.maxPremiumPct == null ? "No fair-price rule" : `Never more than ${p.maxPremiumPct}% above market price`}</span>
+                <span>{p.maxPremiumPct == null
+                    ? "No fair-price rule"
+                    : `Never more than ${p.maxPremiumPct}% above market price; if unknown, ${{ ask: "ask me", block: "don't buy", allow: "buy anyway" }[p.marketUnavailable ?? "ask"]}`}</span>
               </li>
               <li>
                 <Check size={16} className="ok-ico" />

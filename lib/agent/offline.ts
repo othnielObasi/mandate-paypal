@@ -114,9 +114,15 @@ function parsePolicyText(t: string, system: string) {
   budget ??= { amountMinor: 5000, period: "month" };
   cap = Math.min(cap ?? budget.amountMinor, budget.amountMinor);
 
+  const marketFallback = (t: string): "ask" | "block" | "allow" =>
+    /(?:no|without a?|can'?t find a?|unknown) market price[^.]*?(?:buy anyway|go ahead|still buy|allow)/.test(t)
+      ? "allow"
+      : /(?:no|without a?|can'?t find a?|unknown) market price[^.]*?(?:block|refuse|don'?t buy|do not buy|skip)/.test(t)
+        ? "block"
+        : "ask";
   const premium = s.match(/(\d{1,3})\s*%\s*(?:above|over)\s*(?:the\s*)?market/);
   return {
-    ...(premium ? { maxPremiumPct: Math.min(200, Number(premium[1])) } : {}),
+    ...(premium ? { maxPremiumPct: Math.min(200, Number(premium[1])), marketUnavailable: marketFallback(s) } : {}),
     categories,
     currency: "USD",
     maxItemMinor: cap,

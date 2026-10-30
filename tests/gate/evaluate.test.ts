@@ -125,9 +125,19 @@ describe("policy gate: market-price rule", () => {
     expect(evaluate(strict, { ...intent, amountMinor: 460, marketReferenceMinor: 400 }, ctx)).toMatchObject({ outcome: "block", rule: "market_price" });
   });
 
-  it("does not apply without market data, or when the mandate has no market rule", () => {
-    expect(evaluate(withRule, { ...intent, amountMinor: 460 }, ctx).outcome).toBe("allow");
+  it("does not apply when the mandate has no market rule", () => {
     expect(evaluate(mandate, { ...intent, amountMinor: 460, marketReferenceMinor: 400 }, ctx).outcome).toBe("allow");
+    expect(evaluate(mandate, { ...intent, amountMinor: 460 }, ctx).outcome).toBe("allow");
+  });
+
+  it("without market data the signed rule is never silently skipped: ask by default, or block, or allow as signed", () => {
+    const withMode = (marketUnavailable?: "ask" | "block" | "allow"): Mandate => ({ ...withRule, policy: { ...withRule.policy, ...(marketUnavailable ? { marketUnavailable } : {}) } });
+    expect(evaluate(withMode(), { ...intent, amountMinor: 460 }, ctx)).toMatchObject({ outcome: "approve", rule: "market_price", reason: expect.stringMatching(/No market price/) });
+    expect(evaluate(withMode("ask"), { ...intent, amountMinor: 460 }, ctx)).toMatchObject({ outcome: "approve", rule: "market_price" });
+    expect(evaluate(withMode("block"), { ...intent, amountMinor: 460 }, ctx)).toMatchObject({ outcome: "block", rule: "market_price" });
+    expect(evaluate(withMode("block"), { ...intent, amountMinor: 460 }, { ...ctx, approved: true })).toMatchObject({ outcome: "block" });
+    expect(evaluate(withMode("allow"), { ...intent, amountMinor: 460 }, ctx).outcome).toBe("allow");
+    expect(evaluate(withMode("ask"), { ...intent, amountMinor: 460 }, { ...ctx, approved: true }).outcome).toBe("allow");
   });
 
   it("a user approval lets an above-market purchase through", () => {

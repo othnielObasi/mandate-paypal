@@ -10,9 +10,11 @@ Reply with ONLY a JSON object with exactly these keys:
   "budget": { "amountMinor": integer, "period": "week" | "month" },
   "sellers": { "verifiedOnly": boolean, "blocked": string[] },
   "overLimit": "ask" | "block",    // "ask" unless the user says to refuse outright
-  "expires": "YYYY-MM-DD"          // default: 3 months from today
+  "expires": "YYYY-MM-DD",         // default: 3 months from today
+  "maxPremiumPct": integer | null, // "never more than N% above market price" → N; otherwise null
+  "marketUnavailable": "ask" | "block" | "allow"  // only with maxPremiumPct: if no market price can be found. "ask" unless the user says otherwise
 }
-Never add other keys. If the user gives no item limit, use the budget amount.`;
+Never add other keys. Omit marketUnavailable when maxPremiumPct is null. If the user gives no item limit, use the budget amount.`;
 
 export type ParseMandateResult = { ok: true; policy: Policy } | { ok: false; error: string };
 

@@ -213,6 +213,22 @@ export default function Setup() {
                   <span className="muted">% above market</span>
                 </div>
               </div>
+              {form.maxPremium.trim() && (
+                <div className="rule-row">
+                  <label htmlFor="f-market-none" className="rule-name">
+                    No market price
+                    <br />
+                    <span className="hint">If no other shop lists it</span>
+                  </label>
+                  <div className="rule-ctl">
+                    <select id="f-market-none" className="select" style={{ width: "auto" }} value={form.marketUnavailable} onChange={(e) => set("marketUnavailable", e.target.value as PolicyForm["marketUnavailable"])}>
+                      <option value="ask">Ask me</option>
+                      <option value="block">Don&rsquo;t buy</option>
+                      <option value="allow">Buy anyway</option>
+                    </select>
+                  </div>
+                </div>
+              )}
               <div className="rule-row">
                 <span className="rule-name">Sellers</span>
                 <div className="rule-ctl">
@@ -285,7 +301,7 @@ function intentPreview(text: string, f: PolicyForm): string {
     `    categories: [${f.categories}]`,
     `    per_order: $${f.maxItem} → ${f.overLimit === "ask" ? "ask" : "refuse"}`,
     `    budget: $${f.budget} / ${f.period}`,
-    `    max_above_market: ${pct ? `${pct}%` : "off"}`,
+    `    max_above_market: ${pct ? `${pct}%, if unknown → ${f.marketUnavailable}` : "off"}`,
     `    sellers: ${f.verifiedOnly ? "verified only" : "any"}${f.blocked.trim() ? `, never ${f.blocked}` : ""}`,
     "  }",
     "}",

@@ -87,6 +87,14 @@ export function evaluate(mandateIn: Mandate, intentIn: Intent, ctxIn: GateContex
     // Integer maths: amount × 100 > reference × (100 + pct) means "more than pct% above market".
     const pct = p.maxPremiumPct;
     const ref = intent.marketReferenceMinor;
+    // No reference price means the signed fair-price rule can't be checked. Fail closed unless the
+    // user signed "buy anyway": ask them (default) or block, as they chose.
+    if (pct !== null && pct !== undefined && ref === undefined) {
+      const mode = p.marketUnavailable ?? "ask";
+      const why = `No market price was found to check your ${pct}% fair-price limit.`;
+      if (mode === "block") return block("market_price", `${why} You chose to block in that case.`);
+      if (mode === "ask" && !ctx.approved) return { outcome: "approve", rule: "market_price", reason: `${why} You chose to be asked.` };
+    }
     if (pct !== null && pct !== undefined && ref !== undefined && intent.amountMinor * 100 > ref * (100 + pct)) {
       const over = Math.round((intent.amountMinor / ref - 1) * 100);
       const d = soft("market_price", `${money(intent.amountMinor)} is ${over}% above the market price of ${money(ref)} (your limit is ${pct}%).`);

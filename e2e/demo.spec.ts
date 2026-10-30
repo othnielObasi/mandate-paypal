@@ -255,9 +255,11 @@ test("market-price rule: an above-market price goes to the user", async ({ page 
   await page.getByLabel("Your mandate").fill("Office supplies, $100 a month, nothing over $30, never more than 10% above market price");
   await page.getByRole("button", { name: "Read my rules" }).click();
   await expect(page.getByLabel("Fair price")).toHaveValue("10");
+  await expect(page.getByLabel("No market price")).toHaveValue("ask");
+  await page.getByLabel("No market price").selectOption("block");
   await page.getByRole("button", { name: "Sign and activate" }).click();
   await page.waitForURL(/\/app$/);
-  await expect(page.getByTestId("rules")).toContainText("Never more than 10% above market price");
+  await expect(page.getByTestId("rules")).toContainText("Never more than 10% above market price; if unknown, don't buy");
   await runAgent(page, "Buy black ink");
   await expect(page.getByTestId("approval")).toContainText("15% above the market price of $19.99");
 });

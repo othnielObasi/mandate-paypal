@@ -79,6 +79,13 @@ describe("OfflinePlanner (runs the demo with no API key)", () => {
   it("understands a market-price limit", async () => {
     const r = await parseMandate("Household basics, $80 a month, nothing over $25, never more than 10% above market price", new OfflinePlanner(), new Date("2026-10-21T10:00:00Z"));
     expect(r).toMatchObject({ ok: true, policy: { maxPremiumPct: 10, maxItemMinor: 2500, overLimit: "ask" } });
+    expect(r).toMatchObject({ policy: { marketUnavailable: "ask" } });
+    for (const [text, mode] of [
+      ["never more than 10% above market price; if there's no market price, don't buy", "block"],
+      ["never more than 10% above market price, and if there is no market price buy anyway", "allow"],
+    ] as const) {
+      expect(await parseMandate(`Household basics, $80 a month, ${text}`, new OfflinePlanner(), new Date("2026-10-21T10:00:00Z"))).toMatchObject({ ok: true, policy: { marketUnavailable: mode } });
+    }
   });
 
   it("only refuses outright when told to", async () => {
