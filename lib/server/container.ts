@@ -157,6 +157,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
   const credentials = new Credentials(signer);
   const market: PriceOracle = env.CHANNEL3_API_KEY ? new Channel3Oracle({ apiKey: env.CHANNEL3_API_KEY }) : new SimulatedMarket();
   const merchants = new CatalogMerchants(signer, catalog, DEMO_MERCHANTS);
+  const allowedOrigins = [new URL(appUrl).origin, ...(env.MCP_ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean)];
   const governor = new Governor({
     mandates,
     approvals,
@@ -170,6 +171,8 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     merchants,
     credentialStore: stores.credentials,
     market,
+    passkeys: stores.passkeys,
+    origins: allowedOrigins,
   });
 
   const apiKey = env.ANTHROPIC_API_KEY;
@@ -187,7 +190,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     governor,
     catalog,
     appUrl,
-    allowedOrigins: [new URL(appUrl).origin, ...(env.MCP_ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean)],
+    allowedOrigins,
     sessions: new McpSessions((conn) => new AgentSession({ task: "", mandateId: conn.mandateId, catalog, propose: (p) => governor.propose(p), via: conn.label })),
   };
 

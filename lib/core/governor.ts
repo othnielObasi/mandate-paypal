@@ -3,6 +3,8 @@ import type { Credentials } from "../ap2/credentials";
 import { mandateHash, paymentFingerprint } from "../ap2/mandates";
 import type { CredentialStore } from "../ap2/store";
 import { publicJwk } from "../ap2v2/es256";
+import { passkeyOwner, type PasskeyStore } from "../passkey/store";
+import { approvalChallenge, clientOrigin, verifyAssertion, type ApprovalCart, type PasskeyApproval, type PasskeyAssertion } from "../passkey/webauthn";
 import { checkoutReceipt, checkPaymentConstraints, closeApproved, closeAutonomous, merchantCheckout, openMandatesFor, paymentReceipt } from "../ap2v2/mandates";
 import type { Ap2PurchaseRecord } from "../ap2v2/records";
 import { verifyChain } from "../ap2v2/sdjwt";
@@ -43,7 +45,22 @@ interface Deps {
   credentialStore: CredentialStore;
   /** Reference prices for the optional market-price rule. */
   market?: PriceOracle;
+  /** Registered passkeys; when a user has one, approvals must be signed with it. */
+  passkeys?: PasskeyStore;
+  /** Origins a WebAuthn ceremony may come from (the app's own). */
+  origins?: string[];
 }
+
+/** The cart a passkey approval covers, as the merchant will sign it. */
+export const approvalCart = (a: { id: string; proposal: Proposal }): ApprovalCart => ({
+  approvalId: a.id,
+  merchantId: a.proposal.order.merchantId,
+  currency: a.proposal.order.currency,
+  totalMinor: a.proposal.order.items.reduce((s, i) => s + i.unitMinor * i.qty, 0),
+  items: a.proposal.order.items.map((i) => ({ sku: i.sku, qty: i.qty })),
+});
+
+export class PasskeyError extends Error {}
 
 const block = (rule: Decision["rule"], reason: string): Extract<ProposeResult, { status: "blocked" }> => ({
   status: "blocked",
@@ -102,7 +119,7 @@ export class Governor {
     return this.run(p, false);
   }
 
-  async decide(approvalId: string, choice: "approve" | "decline"): Promise<ProposeResult> {
+  async decide(approvalId: string, choice: "approve" | "decline", opts: { passkey?: PasskeyAssertion } = {}): Promise<ProposeResult> {
     const a = await this.d.approvals.get(approvalId);
     if (!a) throw new Error("Approval not found.");
     if (a.status !== "pending") throw new Error(`Approval already ${a.status}.`);
@@ -110,16 +127,28 @@ export class Governor {
       await this.d.approvals.transition(approvalId, "pending", "expired");
       throw new Error("Approval expired.");
     }
+    let passkey: PasskeyApproval | undefined;
+    if (choice === "approve" && this.d.passkeys) {
+      const mandate = await this.d.mandates.get(a.mandateId);
+      const mine = mandate ? await this.d.passkeys.listForUser(passkeyOwner(mandate)) : [];
+      if (opts.passkey) {
+        const rec = mine.find((k) => k.credentialId === opts.passkey!.credentialId);
+        if (!rec) throw new PasskeyError("That passkey is not registered for this account.");
+        const why = verifyAssertion({ ...opts.passkey, publicKey: rec.publicKey }, { challenge: approvalChallenge(approvalCart(a)), origin: this.d.origins ?? [], rpId: rec.rpId });
+        if (why) throw new PasskeyError(`Passkey approval failed: ${why}.`);
+        passkey = { approvalId, ...opts.passkey, publicKey: rec.publicKey, rpId: rec.rpId, origin: clientOrigin(opts.passkey.clientDataJSON) };
+      } else if (mine.length) throw new PasskeyError("Approve with your passkey: this account requires it.");
+    }
     const to = choice === "approve" ? "approved" : "declined";
     if (!(await this.d.approvals.transition(approvalId, "pending", to))) throw new Error("Approval already decided.");
     await this.d.receipts.append({
       mandateId: a.mandateId,
       type: "approval_decided",
       summary: `You ${to} ${a.summary}`,
-      payload: { approvalId, choice },
+      payload: { approvalId, choice, ...(passkey ? { passkey: passkey.credentialId } : {}) },
     });
     if (choice === "decline") return { status: "declined" };
-    return this.run(a.proposal, true);
+    return this.run(a.proposal, true, passkey);
   }
 
   /** After PayPal confirms a capture: the merchant and the payment gateway issue AP2 receipts. */
@@ -158,7 +187,7 @@ export class Governor {
     return r;
   }
 
-  private async run(p: Proposal, approved: boolean): Promise<ProposeResult> {
+  private async run(p: Proposal, approved: boolean, passkey?: PasskeyApproval): Promise<ProposeResult> {
     const now = this.d.clock();
     const mandate = await this.d.mandates.get(p.mandateId);
     if (!mandate) return block("invalid_input", "Unknown mandate.");
@@ -257,7 +286,7 @@ export class Governor {
         const violations = checkPaymentConstraints(openPayment!, closedPayment!, { openCheckoutHash: mandate.ap2.openCheckoutHash, context });
         if (violations.length) return this.logBlock(mandate.id, block("credentials", `The purchase is outside your signed AP2 mandate: ${violations.join("; ")}`), "AP2 mandate check");
       }
-      ap2 = { spec: "ap2/0.2", mode: closed.mode, checkoutJwt: checkout.jwt, checkoutChain: closed.checkoutChain, paymentChain: closed.paymentChain, context };
+      ap2 = { spec: "ap2/0.2", mode: closed.mode, checkoutJwt: checkout.jwt, checkoutChain: closed.checkoutChain, paymentChain: closed.paymentChain, context, ...(passkey ? { passkey } : {}) };
     }
     await this.d.credentialStore.put({ paymentMandateId: pmId, mandateId: mandate.id, paypalOrderId: null, cart: q.cart, payment: pm, fingerprint, createdAt: now.toISOString(), ...(ap2 ? { ap2 } : {}) });
 

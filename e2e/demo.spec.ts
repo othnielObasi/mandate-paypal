@@ -84,6 +84,29 @@ test("guided first run ticks off steps; a paid purchase opens its AP2 proof", as
   await expect(tour).toHaveCount(0);
 });
 
+test("passkey: the user adds one, then approves on their device; the proof and the seller show the device signature", async ({ page }) => {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("WebAuthn.enable");
+  await cdp.send("WebAuthn.addVirtualAuthenticator", {
+    options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
+  });
+  await newMandate(page);
+  const card = page.getByTestId("passkeys").filter({ visible: true });
+  await expect(card).toContainText("Demo key");
+  await card.getByRole("button", { name: "Add a passkey" }).click();
+  await expect(card).toContainText("Passkey on");
+  await runAgent(page, "Buy an electric kettle");
+  await page.getByTestId("approval").getByRole("button", { name: "Approve with passkey" }).click();
+  await expect(page.getByTestId("budget")).toContainText("$32.00 spent");
+  await page.getByTestId("activity").getByRole("button", { name: /Paid Electric kettle/ }).click();
+  const proof = page.getByRole("dialog", { name: "Proof of purchase" });
+  await expect(proof).toContainText("You approved this exact cart on your device");
+  await expect(proof).toContainText("Approved on the user's device (passkey)");
+  await proof.getByRole("link", { name: "Check as the seller" }).click();
+  await expect(page.getByTestId("seller-detail")).toContainText("Customer's device");
+  await expect(page.getByTestId("seller-detail")).toContainText("Safe to fulfil");
+});
+
 test("over the item limit asks the user; approving pays", async ({ page }) => {
   await newMandate(page);
   await runAgent(page, "Buy an electric kettle");

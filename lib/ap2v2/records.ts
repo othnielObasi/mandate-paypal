@@ -1,3 +1,5 @@
+import type { PasskeyApproval } from "../passkey/webauthn";
+
 /** Stored AP2 v0.2 artefacts (all strings are compact SD-JWTs / JWTs). Browser-safe: types only. */
 
 export interface Ap2OpenRecord {
@@ -19,4 +21,6 @@ export interface Ap2PurchaseRecord {
   context: { totalAmount: number; totalUses: number };
   checkoutReceipt?: string;
   paymentReceipt?: string;
+  /** When the user approved on their device: the WebAuthn assertion over this exact cart. */
+  passkey?: PasskeyApproval;
 }

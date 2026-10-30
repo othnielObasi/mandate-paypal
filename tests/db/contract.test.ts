@@ -212,6 +212,16 @@ function contract(name: string, setup: () => Promise<{ fresh: () => Promise<Stor
       expect((await s.connections.getByHash("h1"))?.revokedAt).toBe(now.toISOString());
     });
 
+    it("passkeys: stored by credential id, listed per user, re-registering replaces", async () => {
+      const k = { credentialId: "cred-1", userId: "u1", publicKey: { kty: "EC" as const, crv: "P-256" as const, x: "x", y: "y" }, rpId: "localhost", label: "Phone", createdAt: now.toISOString() };
+      await s.passkeys.add(k);
+      await s.passkeys.add({ ...k, credentialId: "cred-2", userId: "u2" });
+      await s.passkeys.add({ ...k, label: "Laptop" });
+      expect(await s.passkeys.get("cred-1")).toEqual({ ...k, label: "Laptop" });
+      expect(await s.passkeys.get("nope")).toBeUndefined();
+      expect((await s.passkeys.listForUser("u1")).map((x) => x.credentialId)).toEqual(["cred-1"]);
+    });
+
     it("webhook events: each id is accepted once", async () => {
       expect(await s.events.firstSeen("WH-1")).toBe(true);
       expect(await s.events.firstSeen("WH-1")).toBe(false);
@@ -221,7 +231,7 @@ function contract(name: string, setup: () => Promise<{ fresh: () => Promise<Stor
 
 contract("memory", async () => ({ fresh: async () => memoryStores() }));
 
-const TRUNCATE = "TRUNCATE mandates, approvals, permits, payments, receipts, pending_orders, orders, disputes, parcels, webhook_events, credentials, connections RESTART IDENTITY";
+const TRUNCATE = "TRUNCATE mandates, approvals, permits, payments, receipts, pending_orders, orders, disputes, parcels, webhook_events, credentials, connections, passkeys RESTART IDENTITY";
 
 contract("postgres (PGlite)", async () => {
   const pg = new PGlite();

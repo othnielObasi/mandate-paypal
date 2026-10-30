@@ -22,6 +22,9 @@ import { GET as sellerRows } from "@/app/api/seller/route";
 import { GET as ap2Jwks } from "@/app/api/ap2/jwks/route";
 import { GET as verifyOrder } from "@/app/api/verify/[orderId]/route";
 import { GET as trust } from "@/app/api/trust/route";
+import { GET as listPasskeys, POST as addPasskey } from "@/app/api/passkeys/route";
+import { GET as approvalPasskey } from "@/app/api/approvals/[id]/passkey/route";
+import { softAuthenticator } from "../support/authenticator";
 
 const BASE = "http://localhost:3000";
 const post = (path: string, body: unknown) =>
@@ -177,6 +180,52 @@ describe("API: the three trust moments", () => {
     expect(await res.json()).toMatchObject({ status: "paid" });
     const again = await decideApproval(post(`/api/approvals/${pending[0]!.id}`, { choice: "approve" }), params(pending[0]!.id));
     expect(again.status).toBe(409);
+  });
+});
+
+describe("API: passkey approvals", () => {
+  it("registers a passkey, then approvals need its signature over the cart; the seller sees it verified", async () => {
+    const id = await newMandate();
+    const dev = softAuthenticator({ origin: BASE, rpId: "localhost" });
+    const { challenge } = (await (await listPasskeys(get(`/api/passkeys?mandateId=${id}`))).json()) as { challenge: string };
+    expect((await addPasskey(post("/api/passkeys", { mandateId: id, ...dev.register("not-the-challenge") }))).status).toBe(400);
+    const reg = await addPasskey(post("/api/passkeys", { mandateId: id, label: "Phone", ...dev.register(challenge) }));
+    expect(reg.status).toBe(201);
+    expect(await reg.json()).toMatchObject({ label: "Phone", rpId: "localhost" });
+
+    await run(id, "Buy an electric kettle");
+    const [a] = (await (await listApprovals(get(`/api/approvals?mandateId=${id}`))).json()) as Array<{ id: string }>;
+    expect((await decideApproval(post(`/api/approvals/${a!.id}`, { choice: "approve" }), params(a!.id))).status).toBe(403);
+    const ch = (await (await approvalPasskey(get(`/api/approvals/${a!.id}/passkey`), params(a!.id))).json()) as { challenge: string; rpId: string; allowCredentials: string[] };
+    expect(ch).toMatchObject({ rpId: "localhost", allowCredentials: [dev.credentialId] });
+    const res = await decideApproval(post(`/api/approvals/${a!.id}`, { choice: "approve", passkey: dev.sign(ch.challenge) }), params(a!.id));
+    expect(res.status).toBe(200);
+    const paid = (await res.json()) as { status: string; paypalOrderId: string };
+    expect(paid.status).toBe("paid");
+    const v = (await (await ap2Order(get(`/api/ap2/orders/${paid.paypalOrderId}`), { params: Promise.resolve({ orderId: paid.paypalOrderId }) })).json()) as { ok: boolean; checks: Array<{ id: string; ok: boolean }> };
+    expect(v.ok).toBe(true);
+    expect(v.checks.find((c) => c.id === "passkey_approval")?.ok).toBe(true);
+  });
+
+  it("one visitor's passkey never gates another mandate's approvals", async () => {
+    const id = await newMandate();
+    const dev = softAuthenticator({ origin: BASE, rpId: "localhost" });
+    const { challenge } = (await (await listPasskeys(get(`/api/passkeys?mandateId=${id}`))).json()) as { challenge: string };
+    await addPasskey(post("/api/passkeys", { mandateId: id, ...dev.register(challenge) }));
+    const other = await newMandate();
+    await run(other, "Buy an electric kettle");
+    const [a] = (await (await listApprovals(get(`/api/approvals?mandateId=${other}`))).json()) as Array<{ id: string }>;
+    expect((await decideApproval(post(`/api/approvals/${a!.id}`, { choice: "approve" }), params(a!.id))).status).toBe(200);
+  });
+
+  it("declining never needs the passkey", async () => {
+    const id = await newMandate();
+    const dev = softAuthenticator({ origin: BASE, rpId: "localhost" });
+    const { challenge } = (await (await listPasskeys(get(`/api/passkeys?mandateId=${id}`))).json()) as { challenge: string };
+    await addPasskey(post("/api/passkeys", { mandateId: id, ...dev.register(challenge) }));
+    await run(id, "Buy an electric kettle");
+    const [a] = (await (await listApprovals(get(`/api/approvals?mandateId=${id}`))).json()) as Array<{ id: string }>;
+    expect(await (await decideApproval(post(`/api/approvals/${a!.id}`, { choice: "decline" }), params(a!.id))).json()).toMatchObject({ status: "declined" });
   });
 });
 

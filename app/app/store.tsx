@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { Policy } from "@/lib/gate/policy";
 import type { Receipt } from "@/lib/gate/receipts";
 import { toActivity, type Activity } from "@/lib/ui/activity";
+import { listPasskeys, registerPasskey, signApproval, type PasskeyView } from "../components/passkey";
 import { api } from "../components/api";
 import type { OrderView } from "../components/Orders";
 
@@ -35,6 +36,9 @@ type Store = {
   setRun: (r: Run | null) => void;
   runAgent: (task: string, drill: boolean) => Promise<void>;
   decide: (id: string, choice: "approve" | "decline") => Promise<ProposeResult | undefined>;
+  /** Passkeys that sign approvals; empty means approvals use the demo key. */
+  passkeys: PasskeyView[];
+  addPasskey: (label: string) => Promise<void>;
 };
 
 const Ctx = createContext<Store | null>(null);
@@ -54,6 +58,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [budget, setBudget] = useState<Budget | null>(null);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [orders, setOrders] = useState<OrderView[]>([]);
+  const [passkeys, setPasskeys] = useState<PasskeyView[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [run, setRun] = useState<Run | null>(null);
   const [busy, setBusy] = useState(false);
@@ -77,14 +82,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const all = await api<Receipt[]>("/api/receipts");
     setReceipts(all);
     if (!mid) return;
-    const [b, a, o] = await Promise.all([
+    const [b, a, o, k] = await Promise.all([
       api<Budget>(`/api/mandates/${mid}`),
       api<Approval[]>(`/api/approvals?mandateId=${mid}`),
       api<OrderView[]>(`/api/orders?mandateId=${mid}`),
+      listPasskeys(mid).catch(() => ({ passkeys: [] as PasskeyView[] })),
     ]);
     setBudget(b);
     setApprovals(a);
     setOrders(o);
+    setPasskeys(k.passkeys);
   }, []);
 
   useEffect(() => {
@@ -159,14 +166,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const decide = useCallback(
     async (approvalId: string, choice: "approve" | "decline") =>
       act(async () => {
-        const r = await api<ProposeResult>(`/api/approvals/${approvalId}`, { method: "POST", body: JSON.stringify({ choice }) });
+        // With a registered passkey, the device signs this exact cart; otherwise the demo key does.
+        const passkey = choice === "approve" && passkeys.length ? await signApproval(approvalId) : undefined;
+        const r = await api<ProposeResult>(`/api/approvals/${approvalId}`, { method: "POST", body: JSON.stringify({ choice, ...(passkey ? { passkey } : {}) }) });
         setRun((cur) => (cur ? { ...cur, events: [...cur.events, { kind: "tool", name: "your_decision", input: { choice }, ok: true, result: r }] } : cur));
         await refresh();
         if (choice === "decline") toast("Declined. No money moved.");
-        else if (r.status === "paid") toast("Approved and paid with PayPal.");
+        else if (r.status === "paid") toast(passkey ? "Signed with your passkey and paid with PayPal." : "Approved and paid with PayPal.");
         else if (r.status === "awaiting_buyer") toast("Approved. Finish the payment in PayPal.");
         return r;
       }),
+    [act, refresh, toast, passkeys.length],
+  );
+
+  const addPasskey = useCallback(
+    async (label: string) => {
+      await act(async () => {
+        await registerPasskey(idRef.current!, label);
+        await refresh();
+        toast("Passkey added. Approvals now need your device.");
+      });
+    },
     [act, refresh, toast],
   );
 
@@ -190,6 +210,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     refresh,
     act,
     toast,
+    passkeys,
+    addPasskey,
     setRun,
     runAgent,
     decide,

@@ -15,6 +15,7 @@ const endpoints: Array<{ method: string; path: string; what: string }> = [
   { method: "GET", path: "/api/ap2/jwks", what: "ES256 public keys (JWKS) for everything Mandate signs: provider, agent, payment gateway, merchants and users. Keys are looked up by kid." },
   { method: "GET", path: "/api/seller?merchantId={id}", what: "A merchant's agent payments, newest first, with their verdicts." },
   { method: "GET", path: "/api/trust", what: "All public keys, Mandate v1 (Ed25519, PEM) and AP2 v0.2 (JWKS) together." },
+  { method: "GET", path: "/api/approvals/{id}/passkey", what: "The WebAuthn challenge for an approval: derived from the approval ID and the exact cart, so a device signature covers what is bought." },
   { method: "GET", path: "/api/receipts", what: "Mandate's signed, hash-chained decision log." },
   { method: "POST", path: "/api/receipts/verify", what: "Verify a copy of the log you hold; names the first altered entry." },
 ];
@@ -29,6 +30,7 @@ const checks: Array<[string, string]> = [
   ["payment_constraints", "The payment meets the open Payment Mandate: amount range, budget for the period, recurrence, and the reference to the open Checkout Mandate."],
   ["checkout_receipt", "The merchant's receipt is signed and references the closed Checkout Mandate."],
   ["payment_receipt", "The payment gateway's receipt is signed, references the closed Payment Mandate and carries PayPal's order and capture IDs."],
+  ["passkey_approval", "Present when the customer approved on their device: a WebAuthn (ES256) assertion whose challenge is recomputed from the approval ID and the merchant-signed cart, checked for origin, site, user verification and signature."],
 ];
 
 export default function Developers() {
@@ -130,7 +132,7 @@ curl $MANDATE/api/ap2/orders/5O190127TN364715T`}</pre>
               <ul className="ticks small" style={{ color: "var(--ink-2)" }}>
                 <li>Open Checkout and Payment Mandates are SD-JWTs signed by Mandate as Trusted Agent Provider after the user confirms their rules.</li>
                 <li>They delegate (cnf) to Mandate&rsquo;s agent key, which closes each in-policy purchase with a key-binding hop.</li>
-                <li>Purchases the user approves are closed with the user&rsquo;s key. In production that key is a device passkey.</li>
+                <li>Purchases the user approves are closed with the user&rsquo;s key. With a passkey registered, the user&rsquo;s device also signs that exact cart, and the assertion travels in the evidence pack.</li>
                 <li>Seller and category rules are enforced by Mandate&rsquo;s gate before signing, against the live merchant registry.</li>
               </ul>
             </section>

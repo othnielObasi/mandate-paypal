@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS credentials (
 CREATE INDEX IF NOT EXISTS credentials_order ON credentials (paypal_order_id);
 CREATE TABLE IF NOT EXISTS connections (
   id TEXT PRIMARY KEY, n BIGSERIAL, mandate_id TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, data JSONB NOT NULL);
+CREATE TABLE IF NOT EXISTS passkeys (
+  credential_id TEXT PRIMARY KEY, n BIGSERIAL, user_id TEXT NOT NULL, data JSONB NOT NULL);
+CREATE INDEX IF NOT EXISTS passkeys_user ON passkeys (user_id);
 CREATE TABLE IF NOT EXISTS webhook_events (
   id TEXT PRIMARY KEY, received_at TIMESTAMPTZ NOT NULL DEFAULT now());
 CREATE INDEX IF NOT EXISTS receipts_mandate ON receipts (mandate_id, seq);

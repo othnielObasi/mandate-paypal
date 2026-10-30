@@ -8,6 +8,7 @@ export type ReceiptType =
   | "decision"
   | "approval_requested"
   | "approval_decided"
+  | "passkey"
   | "permit"
   | "payment"
   | "payment_pending"

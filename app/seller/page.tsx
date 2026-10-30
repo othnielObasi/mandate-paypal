@@ -33,6 +33,7 @@ const AP2_GROUPS: Array<{ name: string; ids: string[]; who: (d: Detail) => strin
   { name: "Your checkout", ids: ["checkout_signed"], who: () => "Signed by you (ES256)" },
   { name: "Checkout Mandate", ids: ["checkout_chain", "checkout_hash", "checkout_constraints"], who: (d) => (d.ap2?.mode === "human_present" ? "Signed by the customer" : "Customer's open mandate, closed by their agent") },
   { name: "Payment Mandate", ids: ["payment_chain", "payment_matches_checkout", "payment_constraints"], who: (d) => (d.ap2?.mode === "human_present" ? "Approved and signed by the customer" : "Within the customer's signed limits") },
+  { name: "Customer's device", ids: ["passkey_approval"], who: () => "Approved with a passkey (Face ID, fingerprint or PIN)" },
   { name: "Receipts", ids: ["checkout_receipt", "payment_receipt"], who: () => "Your receipt and the payment gateway's" },
 ];
 
@@ -195,7 +196,7 @@ function SellerView() {
                   </div>
                   {ap2 ? (
                     <ol className="chain">
-                      {AP2_GROUPS.map((g) => {
+                      {AP2_GROUPS.filter((g) => g.name !== "Customer's device" || ap2.checks.some((c) => c.id === "passkey_approval")).map((g) => {
                         const cs = ap2.checks.filter((c) => g.ids.includes(c.id));
                         const ok = cs.length > 0 && cs.every((c) => c.ok);
                         return (

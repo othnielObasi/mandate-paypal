@@ -5,6 +5,10 @@ import { createContainer } from "@/lib/server/container";
 import { publicJwk } from "@/lib/ap2v2/es256";
 import { verifyPurchase } from "@/lib/ap2v2/mandates";
 import type { Policy } from "@/lib/gate/policy";
+import { checkAp2Order } from "@/lib/ap2v2/check";
+import { approvalCart } from "@/lib/core/governor";
+import { approvalChallenge, spkiToJwk } from "@/lib/passkey/webauthn";
+import { softAuthenticator } from "../support/authenticator";
 
 const policy: Policy = {
   categories: ["household"],
@@ -59,6 +63,34 @@ describe("AP2 v0.2 through the real purchase flow", () => {
     const v = verifyPurchase(rec!.ap2!, keysFor(c));
     expect(v.mode).toBe("human_present");
     expect(v.ok).toBe(true);
+  });
+
+  it("with a registered passkey, approval needs the device's signature over this exact cart, and the evidence proves it", async () => {
+    const c = createContainer({ APP_URL: "https://mandate.example" });
+    const m = await c.governor.createMandate({ userId: "demo-user", policy, rawText: "household basics" });
+    const dev = softAuthenticator({ origin: "https://mandate.example", rpId: "mandate.example" });
+    const reg = dev.register("x");
+    await c.stores.passkeys.add({ credentialId: dev.credentialId, userId: `demo-user/${m.id}`, publicKey: spkiToJwk(reg.publicKey), rpId: "mandate.example", label: "Phone", createdAt: new Date().toISOString() });
+
+    const asked = (await c.governor.propose(order(c, m.id, "kettle"))) as { approvalId: string };
+    const a = (await c.stores.approvals.get(asked.approvalId))!;
+    await expect(c.governor.decide(a.id, "approve")).rejects.toThrow(/passkey/);
+    await expect(c.governor.decide(a.id, "approve", { passkey: dev.sign("wrong-challenge") })).rejects.toThrow(/challenge/);
+    await expect(c.governor.decide(a.id, "approve", { passkey: dev.sign(approvalChallenge(approvalCart(a)), { origin: "https://evil.example" }) })).rejects.toThrow(/origin/);
+    expect((await c.stores.approvals.get(a.id))!.status).toBe("pending");
+
+    const paid = (await c.governor.decide(a.id, "approve", { passkey: dev.sign(approvalChallenge(approvalCart(a))) })) as { status: string; paypalOrderId: string };
+    expect(paid.status).toBe("paid");
+    const v = await checkAp2Order({ credentials: c.stores.credentials, mandates: c.mandates, keys: c.credentials.ap2 }, paid.paypalOrderId);
+    expect(v?.ok).toBe(true);
+    expect(v?.checks.find((x) => x.id === "passkey_approval")).toMatchObject({ ok: true });
+
+    // Tampering with the stored device signature is caught by anyone re-checking the evidence.
+    const rec = (await c.stores.credentials.getByOrder(paid.paypalOrderId))!;
+    await c.stores.credentials.setAp2(rec.paymentMandateId, { ...rec.ap2!, passkey: { ...rec.ap2!.passkey!, approvalId: "other" } });
+    const v2 = await checkAp2Order({ credentials: c.stores.credentials, mandates: c.mandates, keys: c.credentials.ap2 }, paid.paypalOrderId);
+    expect(v2?.ok).toBe(false);
+    expect(v2?.checks.find((x) => x.id === "passkey_approval")).toMatchObject({ ok: false });
   });
 
   it.skipIf(!process.env.AP2_PYTHON)("the AP2 reference SDK accepts the evidence Mandate stored for a real purchase", async () => {

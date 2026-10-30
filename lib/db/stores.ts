@@ -1,4 +1,5 @@
 import type { Ap2PurchaseRecord } from "../ap2v2/records";
+import { MemoryPasskeyStore, type PasskeyRecord, type PasskeyStore } from "../passkey/store";
 import { MemoryConnectionStore, type ConnectionRecord, type ConnectionStore } from "../mcp/connections";
 import { MemoryCredentialStore, type CredentialRecord, type CredentialStore } from "../ap2/store";
 import { MemoryEventStore, MemoryPendingStore, type EventStore, type PendingPayment, type PendingStore } from "../core/pending";
@@ -40,6 +41,7 @@ export interface Stores {
   events: EventStore;
   credentials: CredentialStore;
   connections: ConnectionStore;
+  passkeys: PasskeyStore;
 }
 
 export function memoryStores(): Stores {
@@ -56,6 +58,7 @@ export function memoryStores(): Stores {
     events: new MemoryEventStore(),
     credentials: new MemoryCredentialStore(),
     connections: new MemoryConnectionStore(),
+    passkeys: new MemoryPasskeyStore(),
   };
 }
 
@@ -333,6 +336,23 @@ class PgConnections implements ConnectionStore {
   }
 }
 
+class PgPasskeys implements PasskeyStore {
+  constructor(private db: PgDb) {}
+  async add(r: PasskeyRecord) {
+    await this.db.q(
+      `INSERT INTO passkeys (credential_id, user_id, data) VALUES ($1, $2, $3::jsonb)
+       ON CONFLICT (credential_id) DO UPDATE SET user_id = EXCLUDED.user_id, data = EXCLUDED.data`,
+      [r.credentialId, r.userId, toJson(r)],
+    );
+  }
+  async get(id: string) {
+    return one(await this.db.q<Doc<PasskeyRecord>>(`SELECT data FROM passkeys WHERE credential_id = $1`, [id]));
+  }
+  async listForUser(userId: string) {
+    return all(await this.db.q<Doc<PasskeyRecord>>(`SELECT data FROM passkeys WHERE user_id = $1 ORDER BY n`, [userId]));
+  }
+}
+
 export function pgStores(db: PgDb): Stores {
   return {
     mandates: new PgMandates(db),
@@ -347,5 +367,6 @@ export function pgStores(db: PgDb): Stores {
     events: new PgEvents(db),
     credentials: new PgCredentials(db),
     connections: new PgConnections(db),
+    passkeys: new PgPasskeys(db),
   };
 }

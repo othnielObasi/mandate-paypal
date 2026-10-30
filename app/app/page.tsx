@@ -5,6 +5,7 @@ import NextLink from "next/link";
 import { STATUS_LABEL, STATUS_TONE, ruleLabel, type Activity } from "@/lib/ui/activity";
 import { api, clock, merchantName, usd } from "../components/api";
 import { Dialog } from "../components/Dialog";
+import { passkeysAvailable } from "../components/passkey";
 import { Alert, Bolt, Check, Cross, Key, Pause, Play, Plug, Shield, ShieldX } from "../components/icons";
 import { useStore, type AgentEvent, type Approval, type Mandate, type ProposeResult, type Run } from "./store";
 
@@ -50,7 +51,7 @@ function titleOf(m: Mandate) {
 }
 
 function Dashboard({ mandate }: { mandate: Mandate }) {
-  const { budget, approvals, activity, act, refresh, toast, busy, decide } = useStore();
+  const { budget, approvals, activity, act, refresh, toast, busy, decide, passkeys } = useStore();
   const [openApproval, setOpenApproval] = useState<Approval | null>(null);
   const [openBlocked, setOpenBlocked] = useState<Activity | null>(null);
   const [openProof, setOpenProof] = useState<Activity | null>(null);
@@ -143,7 +144,7 @@ function Dashboard({ mandate }: { mandate: Mandate }) {
                       Details
                     </button>
                     <button className="btn btn-primary" onClick={() => decide(a.id, "approve")} disabled={busy}>
-                      <Key size={16} /> Approve and sign
+                      <Key size={16} /> {passkeys.length ? "Approve with passkey" : "Approve and sign"}
                     </button>
                   </div>
                 </div>
@@ -246,6 +247,7 @@ function Dashboard({ mandate }: { mandate: Mandate }) {
                 </button>
               ))}
           </section>
+          <PasskeyCard />
           <WhoCanShop />
         </aside>
       </div>
@@ -335,6 +337,41 @@ function BudgetCard({ compact = false }: { compact?: boolean }) {
     </section>
   );
 }
+
+function PasskeyCard() {
+  const { passkeys, addPasskey, busy } = useStore();
+  const [can, setCan] = useState(false);
+  useEffect(() => setCan(passkeysAvailable()), []);
+  return (
+    <section className="card" aria-labelledby="pk-h" data-testid="passkeys">
+      <div className="row between" style={{ marginBottom: 8 }}>
+        <h2 id="pk-h" className="section-label">
+          Approvals
+        </h2>
+        <span className={`chip ${passkeys.length ? "chip-allow" : "chip-outline"}`}>{passkeys.length ? "Passkey on" : "Demo key"}</span>
+      </div>
+      {passkeys.length ? (
+        <p className="small">
+          Purchases you approve are signed on {passkeys.map((k) => k.label).join(", ")} with Face ID, fingerprint or PIN. Sellers can check that signature.
+        </p>
+      ) : can ? (
+        <>
+          <p className="small">Sign approvals on this device with Face ID, fingerprint or PIN, so nobody else can approve for you.</p>
+          <button className="btn btn-sm mt-12" onClick={() => addPasskey(deviceLabel())} disabled={busy}>
+            <Key size={16} /> Add a passkey
+          </button>
+        </>
+      ) : (
+        <p className="small">Approvals here are signed with a demo key. Open the hosted app to use a passkey on your device.</p>
+      )}
+    </section>
+  );
+}
+
+const deviceLabel = () => {
+  const ua = typeof navigator === "undefined" ? "" : navigator.userAgent;
+  return /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android phone" : /Mac/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows PC" : "This device";
+};
 
 function WhoCanShop() {
   const { mandate, activity } = useStore();
@@ -644,7 +681,7 @@ function Search() {
 /* ---------------- Sheets ---------------- */
 
 function ApprovalSheet({ approval, row, onClose }: { approval: Approval; row: Activity | undefined; onClose: () => void }) {
-  const { decide, busy, budget } = useStore();
+  const { decide, busy, budget, passkeys } = useStore();
   const amount = row?.amountMinor ?? 0;
   const left = budget ? budget.remainingMinor - amount : null;
   const go = async (c: "approve" | "decline") => {
@@ -694,10 +731,12 @@ function ApprovalSheet({ approval, row, onClose }: { approval: Approval; row: Ac
         )}
       </section>
       <p className="tiny" style={{ textAlign: "center" }}>
-        Approving signs this exact cart. The agent can&rsquo;t change the item or price afterwards.
+        {passkeys.length
+          ? "Your device signs this exact cart with your passkey. The agent can't change the item or price afterwards."
+          : "Approving signs this exact cart. The agent can't change the item or price afterwards."}
       </p>
       <button className="btn btn-primary btn-lg btn-block" onClick={() => go("approve")} disabled={busy}>
-        {busy ? <span className="spinner" aria-hidden="true" /> : <Key size={18} />} Approve and sign
+        {busy ? <span className="spinner" aria-hidden="true" /> : <Key size={18} />} {passkeys.length ? "Approve with passkey" : "Approve and sign"}
       </button>
       <button className="btn btn-lg btn-block" onClick={() => go("decline")} disabled={busy}>
         Decline
@@ -731,6 +770,7 @@ function ProofSheet({ a, onClose }: { a: Activity; onClose: () => void }) {
       .then(setV)
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)));
   }, [a.paypalOrderId]);
+  const onDevice = !!v?.checks.some((c) => c.id === "passkey_approval" && c.ok);
   const cr = claimsOf(v?.evidence.checkoutReceipt);
   const pr = claimsOf(v?.evidence.paymentReceipt);
   return (
@@ -751,10 +791,12 @@ function ProofSheet({ a, onClose }: { a: Activity; onClose: () => void }) {
       {v && (
         <>
           <section className="card" style={{ padding: "14px 16px" }}>
-            <p style={{ fontWeight: 600 }}>{v.mode === "human_present" ? "You approved this exact cart" : "Within the limits you signed"}</p>
+            <p style={{ fontWeight: 600 }}>{v.mode === "human_present" ? (onDevice ? "You approved this exact cart on your device" : "You approved this exact cart") : "Within the limits you signed"}</p>
             <p className="small">
               {v.mode === "human_present"
-                ? "Signed with your key at approval. The agent could not change the item or price afterwards."
+                ? onDevice
+                  ? "Signed with your passkey. The agent could not change the item or price afterwards, and any seller can check the signature."
+                  : "Signed with your key at approval. The agent could not change the item or price afterwards."
                 : "Your signed mandate allowed it; your agent closed it for this exact checkout, which the merchant signed."}
             </p>
           </section>

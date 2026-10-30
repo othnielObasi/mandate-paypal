@@ -3,6 +3,7 @@ import type { MandateStore } from "../core/stores";
 import type { Ap2Keys } from "./keys";
 import { verifyPurchase, type PurchaseVerdict } from "./mandates";
 import type { Ap2PurchaseRecord } from "./records";
+import { verifyPasskeyApproval } from "../passkey/webauthn";
 
 export interface Ap2OrderCheck extends PurchaseVerdict {
   spec: "ap2/0.2";
@@ -29,5 +30,15 @@ export async function checkAp2Order(d: { credentials: CredentialStore; mandates:
     },
     { context: rec.ap2.context },
   );
+  if (rec.ap2.passkey) {
+    const why = verifyPasskeyApproval(rec.ap2.passkey, rec.ap2.checkoutJwt);
+    verdict.checks.push({
+      id: "passkey_approval",
+      label: "Approved on the user's device (passkey)",
+      ok: why === null,
+      detail: why ?? `WebAuthn assertion from ${rec.ap2.passkey.rpId} over this exact cart, user verified`,
+    });
+    if (why) verdict.ok = false;
+  }
   return { spec: "ap2/0.2", paypalOrderId, ...verdict, evidence: { ...rec.ap2, openCheckoutHash: mandate?.ap2?.openCheckoutHash ?? null } };
 }
