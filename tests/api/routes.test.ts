@@ -18,6 +18,7 @@ import { POST as checkOrders } from "@/app/api/orders/check/route";
 import { POST as simulateOrder } from "@/app/api/orders/[id]/simulate/route";
 import { POST as dispute } from "@/app/api/orders/[id]/dispute/route";
 import { GET as ap2Order } from "@/app/api/ap2/orders/[orderId]/route";
+import { GET as sellerRows } from "@/app/api/seller/route";
 import { GET as ap2Jwks } from "@/app/api/ap2/jwks/route";
 import { GET as verifyOrder } from "@/app/api/verify/[orderId]/route";
 import { GET as trust } from "@/app/api/trust/route";
@@ -278,6 +279,8 @@ describe("API: AP2 v0.2 verification", () => {
     const v = (await (await verifyOrder(get(`/api/verify/${o!.id}`), { params: Promise.resolve({ orderId: o!.id }) })).json()) as { ok: boolean; ap2: { ok: boolean } };
     expect(v).toMatchObject({ ok: true, ap2: { ok: true } });
     expect(((await (await trust()).json()) as { ap2: { keys: unknown[] } }).ap2.keys.length).toBeGreaterThan(3);
+    const rows = (await (await sellerRows(get(`/api/seller?merchantId=acme-supplies`))).json()) as Array<{ paypalOrderId: string; ok: boolean; ap2: boolean | null }>;
+    expect(rows.find((r) => r.paypalOrderId === o!.id)).toMatchObject({ ok: true, ap2: true });
   });
 
   it("404s an order with no AP2 evidence", async () => {

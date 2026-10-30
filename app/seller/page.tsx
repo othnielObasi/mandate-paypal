@@ -12,13 +12,17 @@ import { Back, Check, Cross, Download, Mark, Shield, ShieldX, Store } from "../c
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 type CheckRow = { id: string; label: string; ok: boolean; detail: string };
-type Row = { paypalOrderId: string; paymentMandateId: string; ok: boolean; mode: "human_not_present" | "human_present"; merchant: string; total: string; items: string[]; createdAt: string };
+type Row = { paypalOrderId: string; paymentMandateId: string; ok: boolean; mode: "human_not_present" | "human_present"; merchant: string; total: string; items: string[]; createdAt: string; ap2: boolean | null };
 type Ap2 = { spec: string; ok: boolean; mode: "human_present" | "human_not_present"; checks: CheckRow[]; evidence: Record<string, unknown> };
 type Detail = Row & { checks: CheckRow[]; notes: string[]; chain: unknown; ap2: Ap2 | null };
 type Trust = { merchants: Record<string, { name: string; verified: boolean }> };
 
 function Verdict(p: ICellRendererParams<Row, boolean>) {
   return p.value ? <span className="chip chip-allow">Safe to fulfil</span> : <span className="chip chip-block">Don&rsquo;t ship</span>;
+}
+function Ap2Cell(p: ICellRendererParams<Row, boolean | null>) {
+  if (p.value === null || p.value === undefined) return <span className="chip chip-outline">Not issued</span>;
+  return p.value ? <span className="chip chip-allow">Verified</span> : <span className="chip chip-block">Failed</span>;
 }
 function Mode(p: ICellRendererParams<Row, Row["mode"]>) {
   return p.value === "human_present" ? <span className="chip chip-ask">Buyer approved</span> : <span className="chip chip-accent">Within signed intent</span>;
@@ -78,7 +82,8 @@ function SellerView() {
       { field: "items", headerName: "Items", flex: 1, minWidth: 180, valueFormatter: (p) => ((p.value as string[]) ?? []).join(", ") },
       { field: "total", headerName: "Total", width: 100 },
       { field: "mode", headerName: "Authorised by", width: 190, cellRenderer: Mode, cellClass: "chipcell" },
-      { field: "ok", headerName: "Mandate check", width: 160, cellRenderer: Verdict, cellClass: "chipcell" },
+      { field: "ap2", headerName: "AP2 v0.2", width: 130, cellRenderer: Ap2Cell, cellClass: "chipcell" },
+      { colId: "verdict", headerName: "Verdict", width: 160, valueGetter: (p) => !!p.data && p.data.ok && p.data.ap2 !== false, cellRenderer: Verdict, cellClass: "chipcell" },
       { field: "paypalOrderId", headerName: "PayPal order", width: 190, cellClass: "mono" },
     ],
     [],

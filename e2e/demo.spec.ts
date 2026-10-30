@@ -222,6 +222,9 @@ test("seller view: an agent payment is verified under AP2 v0.2 and backed by the
   }
   await expect(detail.getByRole("link", { name: "Download AP2 evidence pack" })).toHaveAttribute("href", /\/api\/ap2\/orders\//);
   await expect(page.getByTestId("seller-grid")).toContainText("Safe to fulfil");
+  await expect(page.getByTestId("seller-grid")).toContainText("Verified");
+  await page.goto("/app/receipts");
+  await expect(page.getByTestId("ap2-receipts").getByText("Verified").first()).toBeVisible();
 });
 
 test("market-price rule: an above-market price goes to the user", async ({ page }) => {
