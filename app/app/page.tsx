@@ -287,8 +287,9 @@ function ActivityRow({ a, onOpen }: { a: Activity; onOpen: () => void }) {
     </>
   );
   return clickable ? (
-    <button type="button" className="act" onClick={onOpen} aria-label={`${a.title}, ${STATUS_LABEL[a.status]}. ${a.status === "paid" ? "Show proof" : "Show details"}`}>
+    <button type="button" className="act" onClick={onOpen}>
       {body}
+      <span className="sr-only">{a.status === "paid" ? ". Show proof" : ". Show details"}</span>
     </button>
   ) : (
     <div className="act">{body}</div>

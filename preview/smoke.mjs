@@ -47,7 +47,7 @@ async function run(viewport, tag) {
   await p.getByRole("dialog", { name: "Approve a purchase" }).getByRole("button", { name: "Approve and sign" }).click();
   await p.getByRole("dialog").waitFor({ state: "detached" });
   if (!(await p.getByTestId("budget").textContent()).includes("$42.24 spent")) fail(`${tag}: approval not paid`);
-  await p.getByRole("button", { name: /Platinum Deep-Clean Bundle, Blocked/ }).click();
+  await p.getByRole("button", { name: /Blocked Platinum Deep-Clean Bundle/ }).click();
   await p.getByRole("dialog", { name: "A purchase was stopped" }).getByText("SYSTEM NOTE").waitFor();
   if (shots) await p.screenshot({ path: `${shots}/pv-blocked-${viewport.width}.png` });
   await p.keyboard.press("Escape");

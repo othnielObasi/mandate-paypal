@@ -150,7 +150,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .card-accent { border: 1.5px solid var(--accent); }
 .card-night { background: var(--night); color: var(--night-ink); border-color: var(--night); }
 .card-night h2, .card-night h3 { color: #ffffff; }
-.card-night .small, .card-night p { color: var(--night-muted); }
+.card-night .small, .card-night p, .on-night .small, .on-night p { color: var(--night-muted); }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .card-title { font-size: 18px; }
 .section-label { font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }

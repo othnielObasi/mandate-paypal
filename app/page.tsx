@@ -266,7 +266,7 @@ export default function Landing() {
                 </NextLink>
               </div>
             </div>
-            <div className="card" style={{ background: "var(--night-2)", borderColor: "rgba(255,255,255,.1)", color: "var(--night-ink)" }}>
+            <div className="card on-night" style={{ background: "var(--night-2)", borderColor: "rgba(255,255,255,.1)", color: "var(--night-ink)" }}>
               <div className="row" style={{ gap: 14, flexWrap: "nowrap" }}>
                 <span className="icon-tile" style={{ background: "rgba(95,211,160,.15)", color: "#5fd3a0" }}>
                   <Shield size={24} />

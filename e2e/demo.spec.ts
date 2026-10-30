@@ -72,7 +72,7 @@ test("guided first run ticks off steps; a paid purchase opens its AP2 proof", as
   await expect(tour).toContainText("0 of 3");
   await tour.getByRole("button", { name: "Buy washing-up liquid" }).click();
   await expect(tour).toContainText("1 of 3");
-  await page.getByTestId("activity").getByRole("button", { name: /Eco washing-up liquid 500ml, Paid/ }).click();
+  await page.getByTestId("activity").getByRole("button", { name: /Paid Eco washing-up liquid 500ml/ }).click();
   const proof = page.getByRole("dialog", { name: "Proof of purchase" });
   await expect(proof).toContainText("Verified · AP2 v0.2");
   await expect(proof).toContainText("Within the limits you signed");
@@ -119,7 +119,7 @@ test("compromised-agent drill: injected purchases are blocked, and the page text
   await page.getByRole("button", { name: "Compromised-agent drill" }).click();
   await expect(feed(page).getByText("steered by untrusted content")).toHaveCount(2);
   await expect(feed(page).getByText("Paid", { exact: true })).toHaveCount(1);
-  await page.getByRole("button", { name: /Platinum Deep-Clean Bundle, Blocked/ }).click();
+  await page.getByRole("button", { name: /Blocked Platinum Deep-Clean Bundle/ }).click();
   const sheet = page.getByRole("dialog", { name: "A purchase was stopped" });
   await expect(sheet).toContainText("A shop's page tried to make your agent buy something");
   await expect(sheet).toContainText("SYSTEM NOTE");
