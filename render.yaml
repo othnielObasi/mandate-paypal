@@ -26,6 +26,11 @@ services:
         sync: false
       - key: CHANNEL3_API_KEY
         sync: false
+      - key: ZAPIER_HOOK_URL
+        sync: false
+      # Render generates a random secret; copy it into the Zap that pulls the kill switch.
+      - key: AUTOMATION_SECRET
+        generateValue: true
       - key: RATE_LIMIT_PER_MINUTE
         value: "20"
       - key: RATE_LIMIT_PER_HOUR

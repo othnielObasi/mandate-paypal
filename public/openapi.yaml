@@ -32,7 +32,50 @@ tags:
     description: Mandate's signed, hash-chained decision log.
   - name: Demo
     description: The buyer side of the demo. Single demo user, no login.
+  - name: Automation
+    description: |
+      Zapier. Out: with `ZAPIER_HOOK_URL` set, Mandate posts an `AutomationEvent` to that Catch Hook for
+      every approval request, blocked purchase, payment, failed payment and mandate status change.
+      In: a Zap can pull the kill switch with `AUTOMATION_SECRET`. Automations can stop spending, never approve it.
 paths:
+  /api/automation/kill-switch:
+    post:
+      tags: [Automation]
+      operationId: killSwitch
+      summary: Pause, resume or revoke spending from an automation
+      description: |
+        For a Zap such as "text STOP to pause every agent". Without `mandateId` it acts on all of the
+        user's mandates. Logged in the signed decision log as "via automation".
+      security:
+        - automationSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [action]
+              properties:
+                action: { type: string, enum: [pause, resume, revoke] }
+                mandateId: { type: string }
+            example: { action: pause }
+      responses:
+        "200":
+          description: The mandates that changed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  action: { type: string }
+                  status: { type: string, enum: [active, paused, revoked] }
+                  changed: { type: array, items: { type: string } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { description: Missing or wrong bearer token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { description: Not configured (no AUTOMATION_SECRET), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /api/health:
     get:
       tags: [Demo]
@@ -364,6 +407,12 @@ paths:
         "410": { description: Expired, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
 components:
+  securitySchemes:
+    automationSecret:
+      type: http
+      scheme: bearer
+      description: The server's AUTOMATION_SECRET (16+ characters), stored in the Zap.
+
   parameters:
     PayPalOrderId:
       name: paypalOrderId
@@ -405,7 +454,33 @@ components:
         signingKey: { type: string, enum: [configured, ephemeral] }
         storage: { type: string, enum: [postgres, memory] }
         market: { type: string }
+        automation:
+          type: object
+          properties:
+            alerts: { type: string, enum: [zapier, "off"] }
+            killSwitch: { type: string, enum: ["on", "off"] }
         sandboxOnly: { type: boolean, const: true }
+
+    AutomationEvent:
+      type: object
+      description: What Mandate posts to the Zapier Catch Hook. Flat, so every field maps straight into a Zap step.
+      required: [event, message, mandateId, at, link, receipt]
+      properties:
+        event: { type: string, enum: [approval.needed, purchase.blocked, purchase.paid, payment.failed, mandate.status_changed] }
+        message: { type: string, description: "One line for an SMS, email subject or Slack message", example: "Mandate: Approve Electric kettle 1.7L for $32.00 from Acme Supplies" }
+        mandateId: { type: string }
+        at: { type: string, format: date-time }
+        link: { type: string, description: "Where to act (the app), or the payment's public verdict" }
+        receipt:
+          type: object
+          description: The signed log entry this event reports
+          properties:
+            seq: { type: integer }
+            hash: { type: string }
+        approvalId: { type: string }
+        paypalOrderId: { type: string }
+        rule: { type: string, description: The rule that blocked the purchase }
+        status: { type: string, enum: [active, paused, revoked] }
 
     Check:
       type: object

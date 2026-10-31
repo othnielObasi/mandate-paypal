@@ -114,6 +114,32 @@ npx newman run postman/Mandate.postman_collection.json --env-var baseUrl=http://
 2. Claude Code: `claude mcp add --transport http mandate <URL>`. Other assistants: add a remote MCP server and paste the URL, or send `Authorization: Bearer <token>` to `/api/mcp`.
 3. The assistant gets `get_mandate`, `search_products`, `get_product` and `buy`. Revoke the connection or the mandate to cut it off.
 
+## Alerts and kill switch (Zapier)
+
+Agents shop while you are away, so Mandate tells you when it matters and lets you stop everything from your phone.
+
+**Alerts.** In Zapier, create a Zap with the trigger **Webhooks by Zapier → Catch Hook**, copy its URL into `ZAPIER_HOOK_URL`, and add any action: SMS, Gmail, Slack. Mandate posts a flat JSON event for every:
+
+| `event` | When |
+| --- | --- |
+| `approval.needed` | A purchase is over a limit and waits for you |
+| `purchase.blocked` | The gate blocked a purchase (`rule` says which) |
+| `purchase.paid` | A payment went through (`link` is its public verdict) |
+| `payment.failed` | PayPal declined or the buyer cancelled |
+| `mandate.status_changed` | The mandate was paused, resumed or revoked |
+
+Each event has a one-line `message` ready to send, and the `seq` and `hash` of the signed log entry it reports. Alerts run in the background: if Zapier is down, purchases are unaffected.
+
+**Kill switch.** Set `AUTOMATION_SECRET` (16+ characters; the Render blueprint generates one). A Zap can then pause, resume or revoke spending, for example "text STOP to pause every agent":
+
+```bash
+curl -X POST $MANDATE/api/automation/kill-switch \
+  -H "Authorization: Bearer $AUTOMATION_SECRET" -H "content-type: application/json" \
+  -d '{"action":"pause"}'
+```
+
+Automations can only stop or resume spending. They cannot approve a purchase or change a limit; approvals stay in the app, signed by your passkey if you have one.
+
 ## What is real and what is simulated
 
 | Part | With keys set | Without keys (offline demo) |
@@ -141,6 +167,7 @@ npx newman run postman/Mandate.postman_collection.json --env-var baseUrl=http://
 | **AG Grid Community** 33 | The receipts ledger (editable cells as a live tamper test) and the seller payments grid. |
 | **Postgres** | Optional persistence for every store (`DATABASE_URL`), and the cross-process budget lock. |
 | **Render** | Hosting. |
+| **Zapier** | Alerts out (approval needed, blocked, paid, paused) to a Catch Hook, for SMS, email or Slack; a kill switch in, so a Zap can pause every agent. |
 | **Postman** | The API test collection: the full buyer, seller and auditor story with 42 assertions, run in CI with Newman against the built app. |
 
 ## Run it

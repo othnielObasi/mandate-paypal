@@ -109,12 +109,17 @@ export class Governor {
     return m;
   }
 
-  async setStatus(mandateId: string, status: MandateStatus) {
+  async setStatus(mandateId: string, status: MandateStatus, opts: { via?: string } = {}) {
     const m = await this.d.mandates.get(mandateId);
     if (!m) throw new Error("mandate not found");
     if (m.status === "revoked") throw new Error("A revoked mandate cannot be changed.");
     await this.d.mandates.setStatus(mandateId, status);
-    await this.d.receipts.append({ mandateId, type: "mandate", summary: `Mandate ${status}`, payload: { status } });
+    await this.d.receipts.append({
+      mandateId,
+      type: "mandate",
+      summary: `Mandate ${status}${opts.via ? ` (via ${opts.via})` : ""}`,
+      payload: opts.via ? { status, via: opts.via } : { status },
+    });
   }
 
   async budgetStatus(mandateId: string) {

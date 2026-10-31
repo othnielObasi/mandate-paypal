@@ -27,6 +27,7 @@ import { FakeProvider } from "../paypal/fake-provider";
 import type { PaymentProvider } from "../paypal/provider";
 import { ToolkitProvider, type ToolkitTools } from "../paypal/toolkit-provider";
 import { PayPalAuth, PayPalWebhookVerifier } from "../paypal/webhook-verifier";
+import { ZapierHook } from "../automation/zapier";
 import { RateLimiter } from "./rate-limit";
 import type { WebhookVerifier } from "./webhooks";
 
@@ -60,6 +61,8 @@ export interface Container {
   modelName: string;
   signingKey: "configured" | "ephemeral";
   appUrl: string;
+  /** Zapier: alerts out (ZAPIER_HOOK_URL), kill switch in (AUTOMATION_SECRET). */
+  automation: { alerts: ZapierHook | null; killSwitchSecret: string | null };
 }
 
 function makePayPal(env: Env): { provider: PaymentProvider; tracking: TrackingChannel | null; disputes: DisputeChannel } {
@@ -117,6 +120,9 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
   const stores = sql ? pgStores(new PgDb(sql)) : memoryStores();
   const { permits, payments, mandates, approvals } = stores;
   const receipts = new ReceiptLog(signer, clock, stores.receipts);
+  const alerts = env.ZAPIER_HOOK_URL ? new ZapierHook({ url: env.ZAPIER_HOOK_URL, appUrl, onError: (e) => console.warn("Zapier alert not delivered:", e instanceof Error ? e.message : e) }) : null;
+  if (alerts) receipts.subscribe((r) => alerts.notify(r));
+  const killSwitchSecret = env.AUTOMATION_SECRET && env.AUTOMATION_SECRET.length >= 16 ? env.AUTOMATION_SECRET : null;
   const fulfilment = new Fulfilment({
     orders: stores.orders,
     disputes: stores.disputes,
@@ -226,6 +232,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     modelName: apiKey ? model : "offline-planner",
     signingKey: env.MANDATE_SIGNING_KEY ? "configured" : "ephemeral",
     appUrl,
+    automation: { alerts, killSwitchSecret },
   };
 }
 

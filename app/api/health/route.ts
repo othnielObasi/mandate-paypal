@@ -6,5 +6,14 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const c = getContainer();
-  return json({ ok: true, provider: c.providerName, model: c.modelName, signingKey: c.signingKey, storage: c.storage, market: c.marketName, sandboxOnly: true });
+  return json({
+    ok: true,
+    provider: c.providerName,
+    model: c.modelName,
+    signingKey: c.signingKey,
+    storage: c.storage,
+    market: c.marketName,
+    automation: { alerts: c.automation.alerts ? "zapier" : "off", killSwitch: c.automation.killSwitchSecret ? "on" : "off" },
+    sandboxOnly: true,
+  });
 }

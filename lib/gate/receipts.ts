@@ -84,8 +84,18 @@ export class ReceiptLog {
     private store: ReceiptStore = new MemoryReceiptStore(),
   ) {}
 
+  private listeners: Array<(r: Receipt) => unknown> = [];
+
   get publicKey() {
     return this.signer.publicKey;
+  }
+
+  /**
+   * Called with each receipt once it is signed and stored (e.g. to notify Zapier). Listeners run
+   * in the background: they cannot delay, change or fail the decision they report.
+   */
+  subscribe(fn: (r: Receipt) => unknown) {
+    this.listeners.push(fn);
   }
 
   append(input: AppendInput): Promise<Receipt> {
@@ -102,6 +112,12 @@ export class ReceiptLog {
     };
     const next = this.queue.then(run, run);
     this.queue = next.catch(() => undefined);
+    next.then(
+      (r) => {
+        for (const fn of this.listeners) void Promise.resolve().then(() => fn(r)).catch(() => undefined);
+      },
+      () => undefined,
+    );
     return next;
   }
 
