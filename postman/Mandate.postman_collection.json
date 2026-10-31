@@ -1,0 +1,521 @@
+{
+  "info": {
+    "name": "Mandate: verify AI-agent payments on PayPal",
+    "description": "Runs Mandate's whole story against a server, with assertions at every step.\n\n1. Sign spending rules.\n2. The agent buys within them; an over-limit purchase waits for you; a compromised agent is blocked.\n3. Verify each payment the way a seller, PayPal or a dispute reviewer would: AP2 v0.2 evidence and public keys only.\n4. Tamper with the signed decision log and watch verification name the changed row.\n\nSet `baseUrl` to your server (default http://localhost:3000, or the hosted demo) and press **Run collection**. Run it in order: later requests use IDs saved by earlier ones. With no keys on the server everything is simulated (order IDs start `SIM-`); with PayPal sandbox keys the agent creates real sandbox orders, which wait for buyer approval in PayPal.\n\nAPI reference: `{{baseUrl}}/openapi.yaml` and `{{baseUrl}}/developers`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "mandateId",
+      "value": ""
+    },
+    {
+      "key": "paypalOrderId",
+      "value": ""
+    },
+    {
+      "key": "approvalId",
+      "value": ""
+    },
+    {
+      "key": "approvedOrderId",
+      "value": ""
+    },
+    {
+      "key": "receipts",
+      "value": ""
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Every response is JSON except the PEM key; never a server error.",
+          "pm.test(\"no server error\", () => pm.expect(pm.response.code).to.be.below(500));",
+          "if (pm.response.code === 429) pm.test(\"rate limited: the server allows a few model calls a minute. Wait a minute and run again\", () => pm.expect.fail(pm.response.text()));"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1 · Start",
+      "item": [
+        {
+          "name": "Health: what is live and what is simulated",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const h = pm.response.json();",
+                  "pm.test(\"server is up\", () => pm.expect(h.ok).to.be.true);",
+                  "pm.test(\"sandbox only\", () => pm.expect(h.sandboxOnly).to.be.true);",
+                  "console.log(`PayPal: ${h.provider} · model: ${h.model} · market: ${h.market} · storage: ${h.storage}`);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 · Sign your rules",
+      "item": [
+        {
+          "name": "Create a mandate from one sentence",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/mandates",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Household basics, up to $80 a month, nothing over $25, never more than 10% above market price, verified sellers only\"\n}"
+            },
+            "description": "The rules reader (Claude when the server has an Anthropic key) turns the sentence into a policy. Mandate signs it and issues the AP2 v0.2 open Checkout and Payment Mandates."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code >= 300) return; // reported by the collection-level checks",
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "const m = pm.response.json();",
+                  "pm.collectionVariables.set(\"mandateId\", m.id);",
+                  "pm.test(\"active\", () => pm.expect(m.status).to.eql(\"active\"));",
+                  "pm.test(\"$25 item cap and $80 monthly budget\", () => {",
+                  "  pm.expect(m.policy.maxItemMinor).to.eql(2500);",
+                  "  pm.expect(m.policy.budget).to.include({ amountMinor: 8000, period: \"month\" });",
+                  "});",
+                  "pm.test(\"verified sellers only\", () => pm.expect(m.policy.sellers.verifiedOnly).to.be.true);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 · The agent shops",
+      "item": [
+        {
+          "name": "Within the rules: paid",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/agent/run",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mandateId\": \"{{mandateId}}\",\n  \"task\": \"Buy washing-up liquid and sponges\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code >= 300) return; // reported by the collection-level checks",
+                  "const run = pm.response.json();",
+                  "const outcomes = run.events.filter(e => e.kind === \"tool\" && e.name === \"propose_purchase\").map(e => e.result);",
+                  "const done = outcomes.filter(o => o.status === \"paid\" || o.status === \"awaiting_buyer\");",
+                  "pm.test(\"the gate allowed the purchases\", () => {",
+                  "  pm.expect(done.length).to.be.above(0);",
+                  "  done.forEach(o => pm.expect(o.decision.outcome).to.eql(\"allow\"));",
+                  "});",
+                  "if (done[0]) pm.collectionVariables.set(\"paypalOrderId\", done[0].paypalOrderId);",
+                  "if (outcomes.some(o => o.status === \"awaiting_buyer\")) console.log(\"PayPal sandbox: approve as the sandbox buyer at\", outcomes.find(o => o.approveUrl).approveUrl);",
+                  "console.log(run.final);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Over a limit: asks you",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/agent/run",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mandateId\": \"{{mandateId}}\",\n  \"task\": \"Buy an electric kettle\"\n}"
+            },
+            "description": "The kettle is $32, over the $25 item cap, so the gate sends it to the user instead of paying."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code >= 300) return; // reported by the collection-level checks",
+                  "const run = pm.response.json();",
+                  "const o = run.events.filter(e => e.kind === \"tool\" && e.name === \"propose_purchase\").map(e => e.result)[0];",
+                  "pm.test(\"waiting for the user, not paid\", () => {",
+                  "  pm.expect(o.status).to.eql(\"pending_approval\");",
+                  "  pm.expect(o.decision.rule).to.eql(\"item_cap\");",
+                  "});",
+                  "pm.collectionVariables.set(\"approvalId\", o.approvalId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "You approve: paid",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/approvals/{{approvalId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"choice\": \"approve\"\n}"
+            },
+            "description": "With a passkey registered in the app, this needs a WebAuthn signature over the exact cart; the demo user here has none."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test(\"approved and paid\", () => pm.expect([\"paid\", \"awaiting_buyer\"]).to.include(r.status));",
+                  "pm.collectionVariables.set(\"approvedOrderId\", r.paypalOrderId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Compromised agent: injected purchases blocked",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/agent/run",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mandateId\": \"{{mandateId}}\",\n  \"task\": \"Buy a cleaning spray\",\n  \"drill\": true\n}"
+            },
+            "description": "The drill uses an agent that obeys product pages. A product page tells it to buy a bundle and a gift card. The gate blocks both: they came from untrusted content, not from the task."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code >= 300) return; // reported by the collection-level checks",
+                  "const run = pm.response.json();",
+                  "const props = run.events.filter(e => e.kind === \"tool\" && e.name === \"propose_purchase\");",
+                  "const injected = props.filter(e => e.input.sku !== \"clean-spray\").map(e => e.result);",
+                  "pm.test(\"the agent was steered into extra purchases\", () => pm.expect(injected.length).to.be.above(0));",
+                  "pm.test(\"every injected purchase is blocked\", () => injected.forEach(o => {",
+                  "  pm.expect(o.status).to.eql(\"blocked\");",
+                  "  pm.expect(o.decision.rule).to.eql(\"untrusted_instruction\");",
+                  "}));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 · Verify like a seller, PayPal or a reviewer",
+      "item": [
+        {
+          "name": "Public keys (JWKS)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/ap2/jwks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const keys = pm.response.json().keys;",
+                  "pm.test(\"ES256 P-256 keys\", () => keys.forEach(k => pm.expect(k).to.include({ kty: \"EC\", crv: \"P-256\", alg: \"ES256\" })));",
+                  "pm.collectionVariables.set(\"kids\", JSON.stringify(keys.map(k => k.kid)));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verdict for the payment",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/verify/{{paypalOrderId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const v = pm.response.json();",
+                  "pm.test(\"backed by a mandate the buyer signed\", () => pm.expect(v.ok).to.be.true);",
+                  "pm.test(\"every Mandate v1 check passes\", () => v.checks.forEach(c => pm.expect(c.ok, c.id).to.be.true));",
+                  "pm.test(\"AP2 v0.2 verdict passes\", () => pm.expect(v.ap2.ok).to.be.true);",
+                  "pm.test(\"agent bought it with no human present\", () => pm.expect(v.mode).to.eql(\"human_not_present\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AP2 v0.2 evidence pack",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/ap2/orders/{{paypalOrderId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test(\"AP2 v0.2, all checks pass\", () => {",
+                  "  pm.expect(r.spec).to.eql(\"ap2/0.2\");",
+                  "  r.checks.forEach(c => pm.expect(c.ok, c.id).to.be.true);",
+                  "});",
+                  "const header = (jwt) => { const b = jwt.split(\".\")[0].replace(/-/g, \"+\").replace(/_/g, \"/\"); return JSON.parse(CryptoJS.enc.Base64.parse(b + \"===\".slice((b.length + 3) % 4)).toString(CryptoJS.enc.Utf8)); };",
+                  "const kids = JSON.parse(pm.collectionVariables.get(\"kids\") || \"[]\");",
+                  "pm.test(\"merchant checkout and receipts are signed with published keys\", () => {",
+                  "  for (const jwt of [r.evidence.checkoutJwt, r.evidence.checkoutReceipt, r.evidence.paymentReceipt]) {",
+                  "    const h = header(jwt);",
+                  "    pm.expect(h.alg).to.eql(\"ES256\");",
+                  "    pm.expect(kids).to.include(h.kid);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verdict for the approved payment",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/verify/{{approvedOrderId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const v = pm.response.json();",
+                  "pm.test(\"verified\", () => { pm.expect(v.ok).to.be.true; pm.expect(v.ap2.ok).to.be.true; });",
+                  "pm.test(\"closed by the user, not the agent\", () => pm.expect(v.ap2.mode).to.eql(\"human_present\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Seller: my agent payments",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/seller?merchantId=acme-supplies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seller"
+              ],
+              "query": [
+                {
+                  "key": "merchantId",
+                  "value": "acme-supplies"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rows = pm.response.json();",
+                  "pm.test(\"lists payments\", () => pm.expect(rows.length).to.be.above(0));",
+                  "pm.test(\"each one verified under AP2\", () => rows.forEach(r => { pm.expect(r.ok).to.be.true; pm.expect(r.ap2).to.be.true; }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown order: no mandate on file",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/verify/NOT-AN-AGENT-PAYMENT"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404, so a seller should not ship\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5 · Tamper evidence",
+      "item": [
+        {
+          "name": "The signed decision log",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/receipts"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const log = pm.response.json();",
+                  "pm.test(\"hash-chained\", () => log.slice(1).forEach((r, i) => pm.expect(r.prevHash).to.eql(log[i].hash)));",
+                  "pm.collectionVariables.set(\"receipts\", JSON.stringify(log));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify an untouched copy",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/receipts/verify",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{body}}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set(\"body\", JSON.stringify({ receipts: JSON.parse(pm.collectionVariables.get(\"receipts\")) }));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"intact\", () => pm.expect(pm.response.json().ok).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify an edited copy: the changed row is named",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/receipts/verify",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{body}}"
+            },
+            "description": "Changes the amount recorded in one decision, as an insider rewriting history would."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const log = JSON.parse(pm.collectionVariables.get(\"receipts\"));",
+                  "const row = log.find(r => r.type !== \"mandate\") || log[log.length - 1];",
+                  "row.payload = { ...row.payload, edited: \"amount changed to $0.01\" };",
+                  "pm.variables.set(\"tamperedSeq\", row.seq);",
+                  "pm.variables.set(\"body\", JSON.stringify({ receipts: log }));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test(\"tampering detected\", () => pm.expect(r.ok).to.be.false);",
+                  "pm.test(\"the edited row is named\", () => pm.expect(r.brokenAt).to.eql(Number(pm.variables.get(\"tamperedSeq\"))));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

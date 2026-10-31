@@ -41,5 +41,14 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # The Postman collection (postman/) against the built app: 15 requests, 42 assertions.
+      - name: Postman collection
+        env:
+          RATE_LIMIT_PER_MINUTE: "1000"
+        run: |
+          npx next start -p 3000 &
+          for i in $(seq 60); do curl -sf http://localhost:3000/api/health >/dev/null && break; sleep 1; done
+          npx -y newman@6.2.1 run postman/Mandate.postman_collection.json --env-var baseUrl=http://localhost:3000
+          kill %1
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e

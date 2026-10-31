@@ -127,6 +127,26 @@ curl $MANDATE/api/ap2/orders/5O190127TN364715T`}</pre>
             </section>
             <section className="card">
               <h2 className="section-label" style={{ marginBottom: 10 }}>
+                Use it in your tools
+              </h2>
+              <ul className="ticks small" style={{ color: "var(--ink-2)" }}>
+                <li>
+                  <span>
+                    <a href="/openapi.yaml">OpenAPI 3.1 spec</a>: import it into Postman, APIMatic or any client generator.
+                  </span>
+                </li>
+                <li>
+                  <span>
+                    <a href={`${REPO}/blob/main/postman/Mandate.postman_collection.json`} target="_blank" rel="noreferrer">
+                      Postman collection
+                    </a>
+                    : runs the whole story with 42 checks: sign rules, shop, approve, block a compromised agent, verify, detect tampering.
+                  </span>
+                </li>
+              </ul>
+            </section>
+            <section className="card">
+              <h2 className="section-label" style={{ marginBottom: 10 }}>
                 How Mandate signs
               </h2>
               <ul className="ticks small" style={{ color: "var(--ink-2)" }}>

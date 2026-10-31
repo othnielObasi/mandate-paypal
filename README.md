@@ -102,6 +102,12 @@ For sellers, PayPal, and anyone integrating. Full reference at `/developers` in 
 | GET | `/api/trust` | All public keys, v1 and AP2 |
 | GET | `/api/receipts` · POST `/api/receipts/verify` | The signed decision log, and verification of a copy you hold |
 
+**OpenAPI and Postman.** The full API is described in [`public/openapi.yaml`](public/openapi.yaml) (OpenAPI 3.1), served by the app at `/openapi.yaml`. The [Postman collection](postman/Mandate.postman_collection.json) runs the whole story against any server with 42 assertions: sign rules, buy within them, approve an over-limit purchase, block a compromised agent, verify each payment from public keys alone, and catch an edited decision log. Import it into Postman, set `baseUrl`, and press **Run collection**, or from a terminal:
+
+```bash
+npx newman run postman/Mandate.postman_collection.json --env-var baseUrl=http://localhost:3000
+```
+
 ## Connect your own AI assistant (MCP)
 
 1. On the **Assistants** page, name it and press **Create connection URL**. The URL is shown once.
@@ -135,6 +141,7 @@ For sellers, PayPal, and anyone integrating. Full reference at `/developers` in 
 | **AG Grid Community** 33 | The receipts ledger (editable cells as a live tamper test) and the seller payments grid. |
 | **Postgres** | Optional persistence for every store (`DATABASE_URL`), and the cross-process budget lock. |
 | **Render** | Hosting. |
+| **Postman** | The API test collection: the full buyer, seller and auditor story with 42 assertions, run in CI with Newman against the built app. |
 
 ## Run it
 
