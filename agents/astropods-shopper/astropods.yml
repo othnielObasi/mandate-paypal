@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://astropods.com/schema/package.json
+spec: blueprint/v1
+name: mandate-shopper
+
+agent:
+  build:
+    context: .
+    dockerfile: Dockerfile
+  interfaces:
+    messaging: true
+
+models:
+  anthropic:
+    provider: anthropic
+
+inputs:
+  mandate_mcp_url:
+    name: MANDATE_MCP_URL
+    datatype: string
+    secret: true
+    description: "Connection URL from Mandate's Assistants page (https://<your-mandate>/api/mcp/<token>). Revoke it there to cut this agent off."
+  mandate_shopper_model:
+    name: MANDATE_SHOPPER_MODEL
+    datatype: string
+    optional: true
+    description: "Model for the agent, as provider/model"
+    default: anthropic/claude-sonnet-4-6
+
+dev:
+  interfaces:
+    messaging:
+      adapters: [web]

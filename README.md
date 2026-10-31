@@ -124,6 +124,8 @@ apimatic sdk generate -i apimatic -l typescript      # or csharp, java, php, pyt
 2. Claude Code: `claude mcp add --transport http mandate <URL>`. Other assistants: add a remote MCP server and paste the URL, or send `Authorization: Bearer <token>` to `/api/mcp`.
 3. The assistant gets `get_mandate`, `search_products`, `get_product` and `buy`. Revoke the connection or the mandate to cut it off.
 
+**An agent hosted on Astropods.** [`agents/astropods-shopper`](agents/astropods-shopper) is a complete outside agent, built with Mastra and deployed on [Astropods](https://docs.astropods.com), whose only tools are Mandate's. It holds no card and no PayPal access: paste a connection URL into its `MANDATE_MCP_URL` and it shops under your signed rules, with the same gate and evidence as Mandate's own agent. Revoking the link cuts it off.
+
 ## Alerts and kill switch (Zapier)
 
 Agents shop while you are away, so Mandate tells you when it matters and lets you stop everything from your phone.
@@ -191,6 +193,7 @@ Without a Kernel key the agent can read only the app's own `/demo` pages, fetche
 | **Postgres** | Optional persistence for every store (`DATABASE_URL`), and the cross-process budget lock. |
 | **Render** | Hosting. |
 | **KERNEL** (`@onkernel/sdk`) | Cloud browsers for the agent's `read_web_page` tool: one browser per read, Playwright code run inside it to load the page and return its text, then deleted. The text is tracked as untrusted, so a page cannot add a purchase. |
+| **Astropods** | Hosts an outside shopping agent (`agents/astropods-shopper`, Mastra + `@astropods/adapter-mastra`) whose only tools come from Mandate's MCP server, showing a third-party agent spending under the same signed rules. |
 | **Zapier** | Alerts out (approval needed, blocked, paid, paused) to a Catch Hook, for SMS, email or Slack; a kill switch in, so a Zap can pause every agent. |
 | **Postman** | The API test collection: the full buyer, seller and auditor story with 42 assertions, run in CI with Newman against the built app. |
 

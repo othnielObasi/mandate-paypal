@@ -1,0 +1,24 @@
+{
+  "name": "mandate-astropods-shopper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A shopping agent hosted on Astropods that can only spend through Mandate (over MCP).",
+  "license": "MIT",
+  "main": "./agent/index.ts",
+  "scripts": {
+    "dev": "bun --watch agent/index.ts",
+    "start": "bun agent/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@astropods/adapter-core": "0.14.0",
+    "@astropods/adapter-mastra": "0.9.0",
+    "@mastra/core": "1.78.0",
+    "@mastra/mcp": "2.4.1"
+  },
+  "devDependencies": {
+    "@types/bun": "1.2.23",
+    "typescript": "5.9.3"
+  }
+}
