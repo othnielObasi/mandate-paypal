@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 const REPO = "https://github.com/othnielObasi/mandate-paypal";
 
 const endpoints: Array<{ method: string; path: string; what: string }> = [
-  { method: "GET", path: "/api/verify/{paypalOrderId}", what: "Verdict for an agent payment: Mandate v1 checks plus the AP2 v0.2 verdict (ap2) in one response." },
+  { method: "GET", path: "/api/verify/{paypalOrderId}", what: "Verdict for an agent payment: Mandate v1 checks, PayPal's own order record (read with the PayPal Server SDK: the signed amount was captured), and the AP2 v0.2 verdict (ap2) in one response." },
   { method: "GET", path: "/api/ap2/orders/{paypalOrderId}", what: "AP2 v0.2 evidence pack: merchant-signed checkout JWT, Checkout and Payment Mandate chains (SD-JWT), checkout and payment receipts, budget context, and every check with its result." },
   { method: "GET", path: "/api/ap2/jwks", what: "ES256 public keys (JWKS) for everything Mandate signs: provider, agent, payment gateway, merchants and users. Keys are looked up by kid." },
   { method: "GET", path: "/api/seller?merchantId={id}", what: "A merchant's agent payments, newest first, with their verdicts." },

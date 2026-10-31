@@ -1,5 +1,6 @@
 import type { MandateStore } from "../core/stores";
 import type { Merchants } from "../merchant/merchants";
+import type { OrderRecords, PayPalOrderRecord } from "../paypal/order-records";
 import type { Credentials } from "./credentials";
 import { decimal, paymentFingerprint, type CartMandate, type IntentMandate, type PaymentMandate, type PaymentMode } from "./mandates";
 import type { CredentialStore } from "./store";
@@ -11,6 +12,26 @@ export interface CheckDeps {
   credentials: Credentials;
   merchants: Merchants;
   executor: { orderNote(paypalOrderId: string): Promise<string | null> };
+  /** PayPal's own order record (Server SDK, or the simulator). When set, the verdict also checks it. */
+  orderRecords?: OrderRecords | null;
+}
+
+const money = (currency: string, minor: number) => `${currency} ${decimal(minor)}`;
+
+/** Does PayPal's own record show this exact amount captured? */
+async function paypalRecordCheck(src: OrderRecords, paypalOrderId: string, currency: string, totalMinor: number) {
+  const check = (ok: boolean, detail: string) => ({ id: "paypal_order_record", label: "PayPal's record shows the signed amount captured", ok, detail: `${src.source}: ${detail}` });
+  let r: PayPalOrderRecord | null;
+  try {
+    r = await src.getOrderRecord(paypalOrderId);
+  } catch (e) {
+    return check(false, `could not read the order (${e instanceof Error ? e.message.slice(0, 120) : "error"})`);
+  }
+  if (!r) return check(false, "PayPal has no such order");
+  if (r.currency !== currency || r.amountMinor !== totalMinor)
+    return check(false, `PayPal says ${money(r.currency, r.amountMinor)}, the signed checkout says ${money(currency, totalMinor)}`);
+  if (r.status !== "COMPLETED" || r.captureIds.length === 0) return check(false, `order is ${r.status}: not captured yet, so do not ship`);
+  return check(true, `${r.status}, ${money(r.currency, r.amountMinor)} captured (${r.captureIds.join(", ")})`);
 }
 
 export interface PaymentCheck extends ChainResult {
@@ -58,15 +79,17 @@ export async function checkPayment(d: CheckDeps, paypalOrderId: string, now: Dat
     },
   ];
   const cx = rec.cart.contents.x_mandate;
+  const totalMinor = cx.lines.reduce((s, l) => s + l.unitMinor * l.qty, 0);
+  if (d.orderRecords) checks.push(await paypalRecordCheck(d.orderRecords, paypalOrderId, cx.currency, totalMinor));
   return {
-    ok: base.ok && fpOk,
+    ok: base.ok && checks.every((c) => c.ok),
     checks,
     notes: base.notes,
     paypalOrderId,
     paymentMandateId: rec.paymentMandateId,
     mode: rec.payment.payment_mandate_contents.x_mandate.mode,
     merchant: rec.cart.contents.merchant_name,
-    total: `${cx.currency} ${decimal(cx.lines.reduce((s, l) => s + l.unitMinor * l.qty, 0))}`,
+    total: money(cx.currency, totalMinor),
     items: rec.cart.contents.payment_request.details.displayItems.map((i) => i.label),
     createdAt: rec.createdAt,
     chain: { intent, cart: rec.cart, payment: rec.payment },

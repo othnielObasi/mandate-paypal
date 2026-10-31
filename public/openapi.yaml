@@ -96,7 +96,9 @@ paths:
       summary: Verdict for an agent payment
       description: |
         Is this PayPal order backed by a mandate the buyer signed? Returns the Mandate v1 checks
-        (Intent, Cart and Payment Mandates, Ed25519) plus the AP2 v0.2 verdict in `ap2`.
+        (Intent, Cart and Payment Mandates, Ed25519), the `paypal_order_record` check (PayPal's own
+        order record, read with the PayPal Server SDK, shows the signed amount captured), and the
+        AP2 v0.2 verdict in `ap2`.
         Fulfil only when `ok` and `ap2.ok` are both true.
       parameters:
         - $ref: "#/components/parameters/PayPalOrderId"

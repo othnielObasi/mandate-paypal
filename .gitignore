@@ -8,3 +8,7 @@ test-results/
 playwright-report/
 dist/
 preview/routes.generated.ts
+# APIMatic CLI working folder and generated SDKs
+/apimatic/
+# Written by the standalone-preview e2e run
+/mandate-preview.html

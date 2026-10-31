@@ -26,6 +26,7 @@ import { SimulatedDisputes, ToolkitDisputes, ToolkitTracking } from "../paypal/t
 import { FakeProvider } from "../paypal/fake-provider";
 import type { PaymentProvider } from "../paypal/provider";
 import { ToolkitProvider, type ToolkitTools } from "../paypal/toolkit-provider";
+import { ServerSdkOrderRecords, type OrderRecords } from "../paypal/order-records";
 import { PayPalAuth, PayPalWebhookVerifier } from "../paypal/webhook-verifier";
 import { ZapierHook } from "../automation/zapier";
 import { RateLimiter } from "./rate-limit";
@@ -61,11 +62,13 @@ export interface Container {
   modelName: string;
   signingKey: "configured" | "ephemeral";
   appUrl: string;
+  /** PayPal's own order records, for the seller check (Server SDK, or the simulator). */
+  orderRecords: OrderRecords;
   /** Zapier: alerts out (ZAPIER_HOOK_URL), kill switch in (AUTOMATION_SECRET). */
   automation: { alerts: ZapierHook | null; killSwitchSecret: string | null };
 }
 
-function makePayPal(env: Env): { provider: PaymentProvider; tracking: TrackingChannel | null; disputes: DisputeChannel } {
+function makePayPal(env: Env): { provider: PaymentProvider; tracking: TrackingChannel | null; disputes: DisputeChannel; orderRecords: OrderRecords } {
   if (env.PAYPAL_CLIENT_ID && env.PAYPAL_CLIENT_SECRET) {
     if ((env.PAYPAL_ENVIRONMENT ?? "SANDBOX").toUpperCase() !== "SANDBOX")
       throw new Error("Mandate runs against the PayPal sandbox only. Set PAYPAL_ENVIRONMENT=SANDBOX.");
@@ -82,13 +85,16 @@ function makePayPal(env: Env): { provider: PaymentProvider; tracking: TrackingCh
       },
     });
     const tools = toolkit.getTools() as unknown as ToolkitTools & ConstructorParameters<typeof ToolkitTracking>[0] & ConstructorParameters<typeof ToolkitDisputes>[0];
-    return { provider: new ToolkitProvider(tools), tracking: new ToolkitTracking(tools), disputes: new ToolkitDisputes(tools) };
+    return {
+      provider: new ToolkitProvider(tools),
+      tracking: new ToolkitTracking(tools),
+      disputes: new ToolkitDisputes(tools),
+      // The seller check reads PayPal's own order record through the Server SDK (read-only).
+      orderRecords: ServerSdkOrderRecords.sandbox({ clientId: env.PAYPAL_CLIENT_ID, clientSecret: env.PAYPAL_CLIENT_SECRET }),
+    };
   }
-  return {
-    provider: new FakeProvider(env.MANDATE_SIMULATED_MODE === "payer_action" ? "payer_action" : "auto_complete"),
-    tracking: null,
-    disputes: new SimulatedDisputes(),
-  };
+  const fake = new FakeProvider(env.MANDATE_SIMULATED_MODE === "payer_action" ? "payer_action" : "auto_complete");
+  return { provider: fake, tracking: null, disputes: new SimulatedDisputes(), orderRecords: fake };
 }
 
 function makeSql(env: Env, given?: Sql): Sql | null {
@@ -114,7 +120,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
   if (sql && !env.MANDATE_SIGNING_KEY)
     throw new Error("With a database, set MANDATE_SIGNING_KEY so receipts stay verifiable across restarts (see .env.example).");
   const signer = env.MANDATE_SIGNING_KEY ? signerFromPem(env.MANDATE_SIGNING_KEY.replace(/\\n/g, "\n")) : generateSigner();
-  const { provider, tracking, disputes } = makePayPal(env);
+  const { provider, tracking, disputes, orderRecords } = makePayPal(env);
   const clock = () => new Date();
 
   const stores = sql ? pgStores(new PgDb(sql)) : memoryStores();
@@ -133,7 +139,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     publicKey: signer.publicKey,
     clock,
     ap2Evidence: async (paypalOrderId) => {
-      const v = await checkPayment({ stores, mandates, credentials, merchants, executor }, paypalOrderId, clock());
+      const v = await checkPayment({ stores, mandates, credentials, merchants, executor, orderRecords }, paypalOrderId, clock());
       if (!v) return null;
       const ap2 = await checkAp2Order({ credentials: stores.credentials, mandates, keys: credentials.ap2 }, paypalOrderId);
       return {
@@ -233,6 +239,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     signingKey: env.MANDATE_SIGNING_KEY ? "configured" : "ephemeral",
     appUrl,
     automation: { alerts, killSwitchSecret },
+    orderRecords,
   };
 }
 
