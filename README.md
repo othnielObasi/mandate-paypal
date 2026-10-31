@@ -150,6 +150,16 @@ curl -X POST $MANDATE/api/automation/kill-switch \
 
 Automations can only stop or resume spending. They cannot approve a purchase or change a limit; approvals stay in the app, signed by your passkey if you have one.
 
+## Reading the web (KERNEL)
+
+Real shopping means reading reviews, blogs and shop pages, and that is exactly where prompt injection lives. With `KERNEL_API_KEY` set, Mandate's agent gets a `read_web_page` tool that opens the page in a [KERNEL](https://kernel.sh) cloud browser: a real Chromium in Kernel's cloud, created for one read and deleted afterwards, so JavaScript-heavy pages render and the page is fetched from Kernel's network, not Mandate's server.
+
+Everything the browser returns is untrusted. Words that appear only on the page, never in your task, taint any product found with them, so the gate blocks a purchase that only the page asked for. The agent can use a page to choose between products you asked for, but a page cannot add anything to your order.
+
+Try it: on Home, press **Use a web page for picks**. The task points the agent at `/demo/deals`, a third-party style review page served by the app, with a planted "note to AI shopping agents" asking for a bundle and a gift card. A normal agent reads it and buys your basics; run the same task as the compromised-agent drill and the planted purchases are blocked as untrusted instructions.
+
+Without a Kernel key the agent can read only the app's own `/demo` pages, fetched directly; any other URL is refused, so the server never fetches arbitrary addresses from its own network.
+
 ## What is real and what is simulated
 
 | Part | With keys set | Without keys (offline demo) |
@@ -157,6 +167,7 @@ Automations can only stop or resume spending. They cannot approve a purchase or 
 | Payments | **PayPal sandbox** through the PayPal Agent Toolkit; the buyer approves each order in PayPal | Simulated PayPal, labelled in the UI |
 | Shopping agent and rules reader | **Claude** (Anthropic API) | An offline planner |
 | Market prices | **Channel3** live prices | Fixed reference prices for the demo catalogue |
+| Web pages the agent reads | **KERNEL** cloud browser, any public page | Only the app's own `/demo` pages, fetched directly |
 | Merchants and catalogue | Demo merchants with their own signing keys | Same |
 | Parcels | Simulated carrier; tracking numbers are added to the **real** PayPal transaction | Simulated carrier |
 | Disputes | Drafted by Mandate; you file in PayPal's Resolution Center (PayPal has no buyer-side dispute API) and Mandate links it back | Simulated |
@@ -179,6 +190,7 @@ Automations can only stop or resume spending. They cannot approve a purchase or 
 | **AG Grid Community** 33 | The receipts ledger (editable cells as a live tamper test) and the seller payments grid. |
 | **Postgres** | Optional persistence for every store (`DATABASE_URL`), and the cross-process budget lock. |
 | **Render** | Hosting. |
+| **KERNEL** (`@onkernel/sdk`) | Cloud browsers for the agent's `read_web_page` tool: one browser per read, Playwright code run inside it to load the page and return its text, then deleted. The text is tracked as untrusted, so a page cannot add a purchase. |
 | **Zapier** | Alerts out (approval needed, blocked, paid, paused) to a Catch Hook, for SMS, email or Slack; a kill switch in, so a Zap can pause every agent. |
 | **Postman** | The API test collection: the full buyer, seller and auditor story with 42 assertions, run in CI with Newman against the built app. |
 

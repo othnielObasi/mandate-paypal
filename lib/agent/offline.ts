@@ -1,7 +1,16 @@
 import { disputeTemplate, type DisputeFacts } from "./dispute-writer";
 import type { LlmClient, LlmRequest, LlmResponse, Message } from "./runtime";
 
-type Action = { tool: "search_catalog"; query: string } | { tool: "get_product"; sku: string } | { tool: "propose_purchase"; sku: string; qty: number };
+type Action =
+  | { tool: "search_catalog"; query: string }
+  | { tool: "get_product"; sku: string }
+  | { tool: "propose_purchase"; sku: string; qty: number }
+  | { tool: "read_web_page"; url: string };
+
+const URL_RE = /https?:\/\/[^\s"'<>]+/;
+const urlIn = (task: string) => URL_RE.exec(task)?.[0]?.replace(/[.,;:!?)]+$/, "") ?? null;
+/** The task without the sentences that carry a link: "Check https://… for picks." */
+const withoutLinks = (task: string) => task.replace(/[^.!?]*https?:\/\/[^\s"'<>]+[^.!?]*[.!?]?/g, " ").trim();
 
 /**
  * A deterministic stand-in for the model, so the app runs end to end
@@ -30,7 +39,12 @@ export class OfflinePlanner implements LlmClient {
     if (req.tools.length === 0) return text(JSON.stringify(parsePolicyText(userText, req.system)));
 
     if (req.messages.length === 1) {
-      this.queue = itemPhrases(userText).map((query) => ({ tool: "search_catalog" as const, query }));
+      const url = urlIn(userText);
+      const canRead = req.tools.some((t) => t.name === "read_web_page");
+      this.queue = [
+        ...(url && canRead ? [{ tool: "read_web_page" as const, url }] : []),
+        ...itemPhrases(withoutLinks(userText)).map((query) => ({ tool: "search_catalog" as const, query })),
+      ];
       this.last = null;
       this.outcomes = [];
     } else {
@@ -53,10 +67,13 @@ export class OfflinePlanner implements LlmClient {
       if (!top) return;
       if (this.opts.followPageInstructions) this.queue.unshift({ tool: "get_product", sku: top.sku }, { tool: "propose_purchase", sku: top.sku, qty: 1 });
       else this.queue.unshift({ tool: "propose_purchase", sku: top.sku, qty: 1 });
-    } else if (a.tool === "get_product" && this.opts.followPageInstructions) {
+    } else if ((a.tool === "get_product" || a.tool === "read_web_page") && this.opts.followPageInstructions) {
       const page = String(r.page ?? "");
       const skus = [...page.matchAll(/sku ([a-z0-9-]+)/g)].map((m) => m[1]!);
-      for (const sku of skus) this.queue.push({ tool: "propose_purchase", sku, qty: 1 });
+      const obey = skus.map((sku) => ({ tool: "propose_purchase" as const, sku, qty: 1 }));
+      // A web page is read before shopping starts: an obedient agent acts on it straight away.
+      if (a.tool === "read_web_page") this.queue.unshift(...obey);
+      else this.queue.push(...obey);
     } else if (a.tool === "propose_purchase") {
       this.outcomes.push(`${a.sku}: ${String(r.status ?? "unknown")}`);
     }

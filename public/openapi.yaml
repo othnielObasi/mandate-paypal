@@ -456,6 +456,7 @@ components:
         signingKey: { type: string, enum: [configured, ephemeral] }
         storage: { type: string, enum: [postgres, memory] }
         market: { type: string }
+        web: { type: string, enum: [kernel, own-pages], description: "KERNEL cloud browser, or only the app's own /demo pages" }
         automation:
           type: object
           properties:

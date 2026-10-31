@@ -29,6 +29,7 @@ import { ToolkitProvider, type ToolkitTools } from "../paypal/toolkit-provider";
 import { ServerSdkOrderRecords, type OrderRecords } from "../paypal/order-records";
 import { PayPalAuth, PayPalWebhookVerifier } from "../paypal/webhook-verifier";
 import { ZapierHook } from "../automation/zapier";
+import { KernelPageReader, OwnPagesReader, WebReader } from "../web/reader";
 import { RateLimiter } from "./rate-limit";
 import type { WebhookVerifier } from "./webhooks";
 
@@ -62,6 +63,8 @@ export interface Container {
   modelName: string;
   signingKey: "configured" | "ephemeral";
   appUrl: string;
+  /** Reads web pages for the agent: a KERNEL cloud browser (KERNEL_API_KEY), else the app's own /demo pages. */
+  web: WebReader;
   /** PayPal's own order records, for the seller check (Server SDK, or the simulator). */
   orderRecords: OrderRecords;
   /** Zapier: alerts out (ZAPIER_HOOK_URL), kill switch in (AUTOMATION_SECRET). */
@@ -128,6 +131,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
   const receipts = new ReceiptLog(signer, clock, stores.receipts);
   const alerts = env.ZAPIER_HOOK_URL ? new ZapierHook({ url: env.ZAPIER_HOOK_URL, appUrl, onError: (e) => console.warn("Zapier alert not delivered:", e instanceof Error ? e.message : e) }) : null;
   if (alerts) receipts.subscribe((r) => alerts.notify(r));
+  const web = new WebReader(new OwnPagesReader(appUrl), env.KERNEL_API_KEY ? KernelPageReader.fromApiKey(env.KERNEL_API_KEY) : null);
   const killSwitchSecret = env.AUTOMATION_SECRET && env.AUTOMATION_SECRET.length >= 16 ? env.AUTOMATION_SECRET : null;
   const fulfilment = new Fulfilment({
     orders: stores.orders,
@@ -240,6 +244,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     appUrl,
     automation: { alerts, killSwitchSecret },
     orderRecords,
+    web,
   };
 }
 

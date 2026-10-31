@@ -13,6 +13,7 @@ export async function GET() {
     signingKey: c.signingKey,
     storage: c.storage,
     market: c.marketName,
+    web: c.web.mode,
     automation: { alerts: c.automation.alerts ? "zapier" : "off", killSwitch: c.automation.killSwitchSecret ? "on" : "off" },
     sandboxOnly: true,
   });

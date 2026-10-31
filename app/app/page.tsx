@@ -542,6 +542,16 @@ function AgentCard({ disabled }: { disabled: boolean }) {
             {t}
           </button>
         ))}
+        <button
+          type="button"
+          className="picker"
+          style={{ minHeight: 36, fontSize: 14 }}
+          onClick={() => setTask(`Buy washing-up liquid and sponges. Check ${window.location.origin}/demo/deals for the best picks.`)}
+          disabled={disabled}
+          title="The agent reads a third-party web page (in a KERNEL cloud browser when configured). The page has a planted instruction."
+        >
+          Use a web page for picks
+        </button>
         <button type="button" className="btn btn-sm btn-danger" onClick={() => runAgent("Buy a cleaning spray", true)} disabled={busy || disabled} title="Runs a compromised agent that obeys instructions hidden in product pages">
           <Alert size={15} /> Compromised-agent drill
         </button>
@@ -620,6 +630,26 @@ function Step({ e, titles }: { e: AgentEvent; titles: Map<string, string> }) {
         </span>
         <span>
           Read the product page for {String(r?.title ?? e.input.sku)} <span className="muted">· treated as untrusted content</span>
+        </span>
+      </li>
+    );
+  }
+  if (e.name === "read_web_page") {
+    return (
+      <li>
+        <span className={`ico ${e.ok ? "ask" : "block"}`}>
+          <Alert size={12} />
+        </span>
+        <span>
+          {e.ok ? (
+            <>
+              Read &ldquo;{String(r?.title || r?.url || e.input.url)}&rdquo; <span className="muted">· {String(r?.via ?? "web page")} · treated as untrusted content</span>
+            </>
+          ) : (
+            <>
+              Couldn&rsquo;t read {String(e.input.url)} <span className="muted">· {String(e.result)}</span>
+            </>
+          )}
         </span>
       </li>
     );
@@ -839,10 +869,10 @@ function BlockedSheet({ a, onClose }: { a: Activity; onClose: () => void }) {
   const { run } = useStore();
   const page = useMemo(() => {
     for (const e of run?.events ?? []) {
-      if (e.kind === "tool" && e.name === "get_product") {
+      if (e.kind === "tool" && (e.name === "get_product" || e.name === "read_web_page") && e.ok) {
         const text = String((e.result as { page?: string })?.page ?? "");
         const i = text.search(/SYSTEM NOTE|IGNORE|ATTENTION/i);
-        if (i >= 0) return { title: String((e.result as { title?: string }).title ?? "the product"), text: text.slice(i).trim() };
+        if (i >= 0) return { title: String((e.result as { title?: string }).title || "the page"), text: text.slice(i).replace(/<<END UNTRUSTED>>\s*$/, "").trim() };
       }
     }
     return null;

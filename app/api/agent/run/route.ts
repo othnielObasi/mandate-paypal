@@ -24,7 +24,7 @@ export const POST = handle(async (req: Request) => {
   const c = getContainer();
   if (!(await c.mandates.get(mandateId))) throw new HttpError(404, "Mandate not found.");
   enforceLimit(req, c);
-  const opts = { task, mandateId, llm: c.newLlm({ drill }), catalog: c.catalog, propose: c.governor.propose.bind(c.governor) };
+  const opts = { task, mandateId, llm: c.newLlm({ drill }), catalog: c.catalog, propose: c.governor.propose.bind(c.governor), web: c.web };
   if (!stream) return json(await runAgentTask(opts));
 
   const enc = new TextEncoder();
