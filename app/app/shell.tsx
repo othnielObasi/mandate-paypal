@@ -2,7 +2,7 @@
 
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
-import { Box, Home, Mark, Plug, Receipt } from "../components/icons";
+import { Box, Chart, Home, Mark, Plug, Receipt } from "../components/icons";
 import { useStore } from "./store";
 
 const NAV = [
@@ -10,6 +10,7 @@ const NAV = [
   { href: "/app/orders", label: "Orders", icon: Box },
   { href: "/app/assistants", label: "Assistants", icon: Plug },
   { href: "/app/receipts", label: "Receipts", icon: Receipt },
+  { href: "/app/insights", label: "Insights", icon: Chart },
 ] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {

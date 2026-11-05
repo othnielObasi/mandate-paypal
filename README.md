@@ -192,6 +192,7 @@ Without a Kernel key the agent can read only the app's own `/demo` pages, fetche
 | **WebAuthn / passkeys** | Device-signed approvals (ES256). |
 | **Channel3** | Market reference prices: the median of matching products' cheapest in-stock offers. |
 | **AG Grid Community** 33 | The receipts ledger (editable cells as a live tamper test) and the seller payments grid. |
+| **AG Studio** 3 (AG Grid) | The **Insights** dashboard: spend, payments and gate decisions as KPIs, an outcomes donut, "which rule decided", spend by day and merchant, and the decision log, built from the signed log so every row carries its receipt number. Users can switch to **Customise** and rearrange it. Loaded only on that page. |
 | **Postgres** | Optional persistence for every store (`DATABASE_URL`), and the cross-process budget lock. |
 | **Render** | Hosting. |
 | **KERNEL** (`@onkernel/sdk`) | Cloud browsers for the agent's `read_web_page` tool: one browser per read, Playwright code run inside it to load the page and return its text, then deleted. The text is tracked as untrusted, so a page cannot add a purchase. |

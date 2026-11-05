@@ -84,6 +84,11 @@ export const Receipt = (p: P) => (
     <path d="M9 8h6M9 12h6" />
   </Base>
 );
+export const Chart = (p: P) => (
+  <Base {...p}>
+    <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+  </Base>
+);
 export const Bolt = (p: P) => (
   <Base {...p}>
     <path d="M13 2L4 14h7l-1 8 9-12h-7z" />
