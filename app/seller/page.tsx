@@ -7,6 +7,7 @@ import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, type ColDef, type ICellRendererParams } from "ag-grid-community";
 import { api } from "../components/api";
 import { gridTheme } from "../components/grid-theme";
+import { SkRows } from "../components/Skeleton";
 import { Back, Check, Cross, Download, Mark, Shield, ShieldX, Store } from "../components/icons";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -152,9 +153,14 @@ function SellerView() {
               Agent payments to {name}
             </h2>
             <div data-testid="seller-grid" className="grid-wrap">
+              {rows === null ? (
+                <div aria-busy="true" aria-label="Checking payments">
+                  <SkRows rows={3} />
+                </div>
+              ) : (
               <AgGridReact<Row>
                 theme={gridTheme}
-                rowData={rows ?? undefined}
+                rowData={rows}
                 columnDefs={columns}
                 getRowId={(p) => p.data.paypalOrderId}
                 domLayout="autoHeight"
@@ -163,6 +169,7 @@ function SellerView() {
                 overlayNoRowsTemplate="No agent payments yet. Run the agent from the buyer view."
                 defaultColDef={{ sortable: true, resizable: true, filter: true }}
               />
+              )}
             </div>
           </section>
 

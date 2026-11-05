@@ -67,7 +67,7 @@ export default function Landing() {
               <Check size={16} /> PayPal Agent Toolkit
             </span>
             <span>
-              <Check size={16} /> AP2 v0.2 mandates, tested against Google&rsquo;s reference SDK
+              <Check size={16} /> AP2 v0.2, tested with Google&rsquo;s SDK
             </span>
             <span>
               <Check size={16} /> Model Context Protocol

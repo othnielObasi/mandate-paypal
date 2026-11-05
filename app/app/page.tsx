@@ -5,6 +5,7 @@ import NextLink from "next/link";
 import { STATUS_LABEL, STATUS_TONE, ruleLabel, type Activity } from "@/lib/ui/activity";
 import { api, clock, merchantName, usd } from "../components/api";
 import { Dialog } from "../components/Dialog";
+import { Sk, SkCard } from "../components/Skeleton";
 import { passkeysAvailable } from "../components/passkey";
 import { Alert, Bolt, Check, Cross, Key, Pause, Play, Plug, Shield, ShieldX } from "../components/icons";
 import { useStore, type AgentEvent, type Approval, type Mandate, type ProposeResult, type Run } from "./store";
@@ -21,10 +22,20 @@ export default function HomePage() {
 function Skeleton() {
   return (
     <div aria-busy="true" aria-label="Loading your mandate" className="stack" style={{ gap: 20 }}>
-      <div className="card" style={{ height: 120, opacity: 0.6 }} />
+      <div className="stack" style={{ gap: 10 }}>
+        <Sk w={180} h={22} r={999} />
+        <Sk w="min(420px, 70%)" h={34} />
+        <Sk w="min(360px, 60%)" />
+      </div>
       <div className="split">
-        <div className="card" style={{ height: 320, opacity: 0.6 }} />
-        <div className="card" style={{ height: 320, opacity: 0.6 }} />
+        <div className="col">
+          <SkCard lines={2} />
+          <SkCard lines={4} />
+        </div>
+        <div className="col">
+          <SkCard lines={2} />
+          <SkCard lines={5} />
+        </div>
       </div>
     </div>
   );
@@ -78,9 +89,12 @@ function Dashboard({ mandate }: { mandate: Mandate }) {
               {mandate.status === "active" ? "Active" : mandate.status === "paused" ? "Paused" : "Revoked"}
             </span>
             {sig && (
-              <span className="chip chip-outline chip-mono" title="Your Ed25519 signature on the Intent Mandate">
+              <span className="chip chip-outline" title={`Your Ed25519 signature on the Intent Mandate: ${sig}…`}>
                 <Shield size={14} style={{ color: "var(--accent)" }} />
-                Signed by you · Intent Mandate · {sig}…
+                Signed by you
+                <span className="mono hide-narrow" style={{ fontSize: 12, color: "var(--muted)" }}>
+                  {sig}…
+                </span>
               </span>
             )}
           </div>

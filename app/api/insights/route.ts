@@ -13,5 +13,8 @@ export const GET = handle(async (req: Request) => {
   const withMerchants = await Promise.all(
     payments.map(async (p) => ({ ...p, merchant: (await c.stores.credentials.getByOrder(p.paypalOrderId))?.cart.contents.merchant_name })),
   );
-  return json(buildInsights(receipts, withMerchants));
+  const names = c.merchants.directory();
+  const out = buildInsights(receipts, withMerchants);
+  for (const d of out.decisions) d.merchant = names[d.merchant]?.name ?? d.merchant;
+  return json(out);
 });

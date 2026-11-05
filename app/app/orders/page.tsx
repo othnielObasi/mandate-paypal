@@ -137,7 +137,7 @@ function OrderCard({ o, busy, run, save }: { o: OrderView; busy: boolean; run: R
         </div>
         {o.shipmentStatus !== "DELIVERED" && o.shipmentStatus !== "LOST" && (
           <div className="demo-ctl mt-12">
-            <span>Demo carrier:</span>
+            <span className="demo-ctl-label">Carrier simulator</span>
             <button className="btn btn-sm" onClick={() => run(o.id, "lost")} disabled={busy}>
               Simulate lost parcel
             </button>

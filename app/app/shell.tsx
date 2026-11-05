@@ -71,7 +71,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         )}
-        {children}
+        {/* Fades each page in on navigation. Opacity only: a transform here would trap fixed-position dialogs. */}
+        <div key={path} className="page-in">
+          {children}
+        </div>
       </main>
 
       {!setup && (

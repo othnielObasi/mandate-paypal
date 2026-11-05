@@ -1,21 +1,31 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AgStudio, AgStudioProvider } from "ag-studio-react";
 import type { AgFieldDefinition, AgReportState } from "ag-studio";
 import type { Insights } from "@/lib/ui/insights";
+import { mandateStudioTheme } from "./studio-theme";
 
 // AG Studio licence keys are meant to ship to the browser; without one Studio shows a watermark.
 const LICENSE = process.env.NEXT_PUBLIC_AG_STUDIO_LICENSE_KEY || undefined;
 
-const title = (text: string) => ({ title: { enabled: true, text } });
-const kpi = (text: string) => ({ ...title(text), style: { textScaling: { enabled: true } } });
+const title = (text: string) => ({ title: { enabled: true, text, typography: { fontSize: 15, fontWeight: "bold" as const } } });
+const kpi = (text: string) => ({ ...title(text), style: { typography: { fontSize: 30, fontWeight: "bold" as const }, textScaling: { enabled: false } } });
 
 /** The dashboard, defined as an AG Studio report: KPIs, outcome and rule breakdowns, spend, and the decision log. */
 export const REPORT: AgReportState = {
   pages: [
     {
       id: "overview",
+      layout: {
+        backgroundColor: "var(--bg)",
+        widgetBackgroundColor: "var(--surface)",
+        widgetBorderEnabled: true,
+        widgetBorderColor: "var(--line)",
+        widgetBorderWidth: 1,
+        widgetBorderRadius: 16,
+        widgetPadding: 12,
+      },
       widgets: {
         paid: { type: "value", dataMapping: { value: [{ id: "payments.amount", aggregation: "sum" }] }, format: kpi("Paid through PayPal ($)") },
         payments: { type: "value", dataMapping: { value: [{ id: "payments.n", aggregation: "sum" }] }, format: kpi("Payments") },
@@ -87,7 +97,7 @@ const num = (id: string, name: string, format: "decimalFormat" | "integerFormat"
 export const FIELDS: Record<"decisions" | "payments", AgFieldDefinition[]> = {
   decisions: [
     num("n", "Count", "integerFormat"),
-    num("seq", "Receipt #", "integerFormat"),
+    num("seq", "#", "integerFormat"),
     { id: "at", name: "Time", format: "dateTimeFormat" },
     text("day", "Day"),
     text("outcome", "Outcome"),
@@ -108,7 +118,21 @@ export const FIELDS: Record<"decisions" | "payments", AgFieldDefinition[]> = {
   ],
 };
 
+function useDarkScheme() {
+  const [dark, setDark] = useState(false);
+  useEffect(() => {
+    const m = window.matchMedia("(prefers-color-scheme: dark)");
+    const read = () => setDark(m.matches && document.documentElement.dataset.theme !== "light");
+    read();
+    m.addEventListener("change", read);
+    return () => m.removeEventListener("change", read);
+  }, []);
+  return dark;
+}
+
 export default function Dashboard({ insights, editing }: { insights: Insights; editing: boolean }) {
+  const dark = useDarkScheme();
+  const theme = useMemo(() => mandateStudioTheme(dark), [dark]);
   const data = useMemo(
     () => ({
       sources: [
@@ -121,7 +145,7 @@ export default function Dashboard({ insights, editing }: { insights: Insights; e
   return (
     <AgStudioProvider licenseKey={LICENSE}>
       <div style={{ height: 900 }}>
-        <AgStudio data={data} initialState={REPORT} mode={editing ? "edit" : "view"} style={{ height: "100%" }} />
+        <AgStudio data={data} initialState={REPORT} mode={editing ? "edit" : "view"} theme={theme} style={{ height: "100%" }} />
       </div>
     </AgStudioProvider>
   );

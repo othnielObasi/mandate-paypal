@@ -5,9 +5,22 @@ import { useEffect, useState } from "react";
 import { api } from "../../components/api";
 import type { Insights } from "@/lib/ui/insights";
 import { useStore } from "../store";
+import { SkCard } from "../../components/Skeleton";
+
+function DashboardSkeleton() {
+  return (
+    <div className="stack" style={{ gap: 20 }} aria-busy="true" aria-label="Loading the dashboard">
+      <div className="split-even">
+        <SkCard lines={1} />
+        <SkCard lines={1} />
+      </div>
+      <SkCard lines={6} height={320} />
+    </div>
+  );
+}
 
 // AG Studio is large and browser-only: load it on this page alone.
-const Dashboard = dynamic(() => import("./Dashboard"), { ssr: false, loading: () => <p className="small">Loading the dashboard…</p> });
+const Dashboard = dynamic(() => import("./Dashboard"), { ssr: false, loading: () => <DashboardSkeleton /> });
 
 export default function InsightsPage() {
   const { mandate, receipts } = useStore();
@@ -42,7 +55,7 @@ export default function InsightsPage() {
           No decisions yet. Give your agent a job on Home and come back.
         </p>
       )}
-      {insights ? <Dashboard insights={insights} editing={editing} /> : <p className="small">Loading…</p>}
+      {insights ? <Dashboard insights={insights} editing={editing} /> : <DashboardSkeleton />}
     </>
   );
 }

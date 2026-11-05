@@ -225,7 +225,9 @@ test("works at phone width: no sideways scrolling, tab bar navigation", async ({
 
 test("the mandate is signed by the user (AP2 Intent Mandate)", async ({ page }) => {
   await newMandate(page);
-  await expect(page.getByText(/Signed by you · Intent Mandate/)).toBeVisible();
+  const chip = page.locator(".chip", { hasText: "Signed by you" });
+  await expect(chip).toBeVisible();
+  await expect(chip).toHaveAttribute("title", /Ed25519 signature on the Intent Mandate/);
 });
 
 test("seller view: an agent payment is verified under AP2 v0.2 and backed by the buyer's signed mandate", async ({ page }) => {

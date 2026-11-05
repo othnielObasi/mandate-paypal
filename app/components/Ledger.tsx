@@ -68,22 +68,22 @@ export function Ledger({ receipts, mandateId }: { receipts: Receipt[]; mandateId
 
   const columns = useMemo<ColDef<LedgerRow>[]>(
     () => [
-      { field: "seq", headerName: "#", width: narrow ? 64 : 76, sort: "desc", filter: "agNumberColumnFilter" },
-      { field: "time", headerName: "Time", width: 110, hide: narrow, valueFormatter: (p) => (p.value ? new Date(p.value as string).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }) : "") },
-      { field: "kind", headerName: "Kind", width: narrow ? 140 : 168, cellRenderer: KindChip, filter: "agTextColumnFilter", cellClass: "chipcell" },
+      { field: "seq", headerName: "#", width: narrow ? 52 : 68, sort: "desc", filter: "agNumberColumnFilter", cellClass: "cell-top" },
+      { field: "time", headerName: "Time", width: 96, hide: narrow, cellClass: "cell-top mono", valueFormatter: (p) => (p.value ? new Date(p.value as string).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }) : "") },
+      { field: "kind", headerName: "Kind", width: narrow ? 118 : 136, cellRenderer: KindChip, filter: "agTextColumnFilter", cellClass: "chipcell" },
       {
         field: "summary",
-        headerName: "What happened (double-click to edit)",
+        headerName: narrow ? "What happened" : "What happened (double-click to edit)",
         flex: 1,
-        minWidth: narrow ? 220 : 300,
+        minWidth: narrow ? 180 : 260,
         editable: true,
         wrapText: true,
         autoHeight: true,
-        cellClass: "wrap",
+        cellClass: "cell-wrap",
         filter: "agTextColumnFilter",
         cellClassRules: { "cell-edited": (p) => !!p.data && edited.has(p.data.seq) },
       },
-      { field: "hash", headerName: "Hash", width: 150, hide: narrow, cellClass: "mono", valueFormatter: (p) => `${String(p.value ?? "").slice(0, 12)}…` },
+      { field: "hash", headerName: "Hash", width: 132, hide: narrow, cellClass: "cell-top mono", valueFormatter: (p) => `${String(p.value ?? "").slice(0, 12)}…` },
     ],
     [edited, narrow],
   );
@@ -151,8 +151,9 @@ export function Ledger({ receipts, mandateId }: { receipts: Receipt[]; mandateId
           stopEditingWhenCellsLoseFocus
           onCellValueChanged={onEdit}
           rowClassRules={{ "row-broken": (p) => !!p.data && p.data.seq === brokenAt }}
-          defaultColDef={{ sortable: true, resizable: true }}
+          defaultColDef={{ sortable: true, resizable: true, suppressHeaderFilterButton: narrow, suppressHeaderMenuButton: narrow }}
           overlayNoRowsTemplate="No receipts yet."
+          onFirstDataRendered={(e) => void document.fonts?.ready.then(() => e.api.resetRowHeights())}
         />
       </div>
     </div>
