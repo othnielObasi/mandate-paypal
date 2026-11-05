@@ -5,7 +5,7 @@ import { createContainer, setContainer } from "@/lib/server/container";
 import { POST as createMandate } from "@/app/api/mandates/route";
 import { POST as runAgent } from "@/app/api/agent/run/route";
 import { GET as insights } from "@/app/api/insights/route";
-import { REPORT } from "@/app/app/insights/Dashboard";
+import { FIELDS, REPORT } from "@/app/app/insights/Dashboard";
 
 const r = (over: Partial<Receipt>): Receipt => ({
   seq: 3,
@@ -87,5 +87,13 @@ describe("Insights API and dashboard", () => {
       const [source, field] = ref.slice(6, -1).split(".") as ["decisions" | "payments", string];
       expect(fields[source], ref).toContain(field);
     }
+  });
+
+  it("declares every field up front, so an empty source (no payment captured yet) still has a schema", () => {
+    const rows = {
+      decisions: Object.keys(decisionRow(r({ payload: { intent, decision: { outcome: "allow", rule: "ok" } } }))!),
+      payments: Object.keys(buildInsights([], [{ amountMinor: 1, capturedAt: "2026-11-05T00:00:00Z", paypalOrderId: "X" }]).payments[0]!),
+    };
+    for (const source of ["decisions", "payments"] as const) expect(FIELDS[source].map((f) => f.id).sort(), source).toEqual([...rows[source]].sort());
   });
 });

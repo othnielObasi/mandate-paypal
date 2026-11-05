@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { AgStudio, AgStudioProvider } from "ag-studio-react";
-import type { AgReportState } from "ag-studio";
+import type { AgFieldDefinition, AgReportState } from "ag-studio";
 import type { Insights } from "@/lib/ui/insights";
 
 // AG Studio licence keys are meant to ship to the browser; without one Studio shows a watermark.
@@ -77,12 +77,43 @@ export const REPORT: AgReportState = {
   panels: { filters: { collapsed: true } },
 } as AgReportState;
 
+const text = (id: string, name: string): AgFieldDefinition => ({ id, name, format: "textFormat" });
+const num = (id: string, name: string, format: "decimalFormat" | "integerFormat" = "decimalFormat"): AgFieldDefinition => ({ id, name, format });
+
+/**
+ * Declared, not inferred: Studio infers fields from rows, so an empty source (no payment captured
+ * yet, e.g. every PayPal order still waiting for the buyer) would otherwise have no fields at all.
+ */
+export const FIELDS: Record<"decisions" | "payments", AgFieldDefinition[]> = {
+  decisions: [
+    num("n", "Count", "integerFormat"),
+    num("seq", "Receipt #", "integerFormat"),
+    { id: "at", name: "Time", format: "dateTimeFormat" },
+    text("day", "Day"),
+    text("outcome", "Outcome"),
+    text("rule", "Rule"),
+    text("item", "Item"),
+    text("category", "Category"),
+    text("merchant", "Merchant"),
+    num("amount", "Amount ($)"),
+    text("source", "Started by"),
+  ],
+  payments: [
+    num("n", "Count", "integerFormat"),
+    { id: "at", name: "Time", format: "dateTimeFormat" },
+    text("day", "Day"),
+    num("amount", "Amount ($)"),
+    text("merchant", "Merchant"),
+    text("paypalOrderId", "PayPal order"),
+  ],
+};
+
 export default function Dashboard({ insights, editing }: { insights: Insights; editing: boolean }) {
   const data = useMemo(
     () => ({
       sources: [
-        { id: "decisions", name: "Gate decisions", data: insights.decisions as unknown as Record<string, unknown>[] },
-        { id: "payments", name: "Payments", data: insights.payments as unknown as Record<string, unknown>[] },
+        { id: "decisions", name: "Gate decisions", data: insights.decisions as unknown as Record<string, unknown>[], fields: FIELDS.decisions },
+        { id: "payments", name: "Payments", data: insights.payments as unknown as Record<string, unknown>[], fields: FIELDS.payments },
       ],
     }),
     [insights],
