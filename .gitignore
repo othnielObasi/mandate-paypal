@@ -12,3 +12,5 @@ preview/routes.generated.ts
 /apimatic/
 # Written by the standalone-preview e2e run
 /mandate-preview.html
+# Secrets for Render (filled in by hand)
+/.env.render
