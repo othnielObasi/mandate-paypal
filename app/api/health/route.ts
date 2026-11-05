@@ -10,6 +10,7 @@ export async function GET() {
     ok: true,
     provider: c.providerName,
     model: c.modelName,
+    modelProvider: c.modelProvider,
     signingKey: c.signingKey,
     storage: c.storage,
     market: c.marketName,

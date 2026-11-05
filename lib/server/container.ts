@@ -1,5 +1,5 @@
 import { PayPalAgentToolkit } from "@paypal/agent-toolkit/ai-sdk";
-import { AnthropicClient } from "../agent/anthropic";
+import { AnthropicClient, CLAUDE, META, type MessagesEndpoint } from "../agent/anthropic";
 import { OfflinePlanner } from "../agent/offline";
 import type { LlmClient } from "../agent/runtime";
 import { Pool } from "pg";
@@ -61,6 +61,8 @@ export interface Container {
   newLlm: (opts?: { drill?: boolean }) => LlmClient;
   providerName: string;
   modelName: string;
+  /** "Claude API", "Meta Model API" or "offline". */
+  modelProvider: string;
   signingKey: "configured" | "ephemeral";
   appUrl: string;
   /** Reads web pages for the agent: a KERNEL cloud browser (KERNEL_API_KEY), else the app's own /demo pages. */
@@ -110,6 +112,26 @@ function makeVerifier(env: Env): WebhookVerifier | null {
   if (!(env.PAYPAL_CLIENT_ID && env.PAYPAL_CLIENT_SECRET && env.PAYPAL_WEBHOOK_ID)) return null;
   const auth = new PayPalAuth({ clientId: env.PAYPAL_CLIENT_ID, clientSecret: env.PAYPAL_CLIENT_SECRET });
   return new PayPalWebhookVerifier({ webhookId: env.PAYPAL_WEBHOOK_ID, auth });
+}
+
+/**
+ * Which model runs the agent, the rules reader and the dispute writer.
+ * MANDATE_LLM=claude|meta chooses explicitly; otherwise whichever key is set (Claude first).
+ * A MANDATE_MODEL from the other provider is ignored in favour of this provider's default.
+ */
+export function chooseLlm(env: Env): { endpoint: MessagesEndpoint; apiKey: string; model: string; timeoutMs: number } | null {
+  const pick = (env.MANDATE_LLM ?? "").trim().toLowerCase();
+  const wanted = pick === "meta" || pick === "muse" ? "meta" : pick === "claude" || pick === "anthropic" ? "claude" : env.ANTHROPIC_API_KEY ? "claude" : env.MODEL_API_KEY ? "meta" : null;
+  if (wanted === "claude" && env.ANTHROPIC_API_KEY) {
+    const model = env.MANDATE_MODEL?.startsWith("claude") ? env.MANDATE_MODEL : "claude-sonnet-5-5";
+    return { endpoint: CLAUDE, apiKey: env.ANTHROPIC_API_KEY, model, timeoutMs: 45_000 };
+  }
+  if (wanted === "meta" && env.MODEL_API_KEY) {
+    const model = env.MANDATE_MODEL?.startsWith("muse") ? env.MANDATE_MODEL : "muse-spark-1.3";
+    // Muse usually answers in seconds but can occasionally stall; give up sooner and retry once.
+    return { endpoint: META, apiKey: env.MODEL_API_KEY, model, timeoutMs: 25_000 };
+  }
+  return null;
 }
 
 const intEnv = (v: string | undefined, d: number) => {
@@ -196,13 +218,14 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     lock: sql && isConnectable(sql) ? new PgAdvisoryLock(sql) : new MemoryLock(),
   });
 
-  const apiKey = env.ANTHROPIC_API_KEY;
-  const model = env.MANDATE_MODEL ?? "claude-sonnet-5-5";
+  const llm = chooseLlm(env);
+  const apiKey = llm?.apiKey;
+  const model = llm?.model ?? "offline-planner";
   const newLlm = (opts?: { drill?: boolean }): LlmClient => {
     // The drill simulates a compromised agent that obeys product pages, so the
     // injection defence can be shown reliably whatever the real model would do.
     if (opts?.drill) return new OfflinePlanner({ followPageInstructions: true });
-    return apiKey ? new AnthropicClient({ apiKey, model }) : new OfflinePlanner();
+    return llm ? new AnthropicClient({ apiKey: llm.apiKey, model: llm.model, endpoint: llm.endpoint, timeoutMs: llm.timeoutMs }) : new OfflinePlanner();
   };
 
   const mcp: McpDeps = {
@@ -240,6 +263,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     proxyHops: intEnv(env.TRUSTED_PROXY_HOPS, 1),
     providerName: provider.name,
     modelName: apiKey ? model : "offline-planner",
+    modelProvider: llm ? llm.endpoint.label : "offline",
     signingKey: env.MANDATE_SIGNING_KEY ? "configured" : "ephemeral",
     appUrl,
     automation: { alerts, killSwitchSecret },

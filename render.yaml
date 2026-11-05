@@ -6,7 +6,7 @@ services:
     name: mandate
     runtime: node
     plan: free
-    region: frankfurt
+    region: oregon
     buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
@@ -22,7 +22,19 @@ services:
         sync: false
       - key: PAYPAL_WEBHOOK_ID
         sync: false
+      # The model: Muse Spark on the Meta Model API (MODEL_API_KEY), or Claude (ANTHROPIC_API_KEY).
+      - key: MANDATE_LLM
+        value: meta
+      - key: MANDATE_MODEL
+        value: muse-spark-1.3
+      - key: MODEL_API_KEY
+        sync: false
       - key: ANTHROPIC_API_KEY
+        sync: false
+      # Persistence: a Render Postgres internal URL, and the key that signs receipts and permits.
+      - key: DATABASE_URL
+        sync: false
+      - key: MANDATE_SIGNING_KEY
         sync: false
       - key: CHANNEL3_API_KEY
         sync: false
