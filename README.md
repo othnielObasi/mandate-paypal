@@ -4,6 +4,8 @@
 
 Mandate is an independent authorisation layer for AI-agent payments, running on PayPal today. You describe what agents may buy in one sentence, check the rules it read, and sign them. From then on any agent can shop for you: Mandate's own agent, or Claude, ChatGPT or your own agent connected over MCP. No agent can move money itself. Every purchase is priced and signed by the merchant, decided by a deterministic gate against the limits you signed, and paid through the PayPal Agent Toolkit. Each payment carries [AP2 v0.2](https://github.com/google-agentic-commerce/AP2) mandates and receipts that a seller, PayPal or a dispute reviewer can verify with public keys alone.
 
+**Live demo: [mandate-e13m.onrender.com](https://mandate-e13m.onrender.com)** (PayPal sandbox, Muse Spark, KERNEL, Channel3; on a free plan, so the first visit after a quiet spell can take up to a minute to wake).
+
 Built for the PayPal AI Hackathon (2026). An independent open-source project, not affiliated with or endorsed by PayPal or Google.
 
 ## Why
