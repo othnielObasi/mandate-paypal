@@ -85,6 +85,26 @@ describe("conversation with the agent", () => {
     expect(own.mock.calls[0]![0].origin).toBe("agent");
   });
 
+  it("a follow-up can't buy an earlier turn's item again unless the newest message asks for it", async () => {
+    const make = (newestTask: string) => {
+      const propose = vi.fn(async (_p: Proposal) => ({ status: "paid" as const }));
+      const s = new AgentSession({ task: `Buy washing-up liquid\n${newestTask}`, newestTask, earlierItems: ["wul-500"], mandateId: "m1", catalog: new Catalog(DEMO_CATALOG), propose });
+      return { s, propose };
+    };
+    const a = make("Also get two packs of sponges");
+    await a.s.call("search_catalog", { query: "washing-up liquid" });
+    const again = await a.s.call("propose_purchase", { sku: "wul-500", qty: 1 });
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.error).toMatch(/already handled earlier/);
+    expect(a.propose).not.toHaveBeenCalled();
+    await a.s.call("search_catalog", { query: "sponges" });
+    expect((await a.s.call("propose_purchase", { sku: "sponge-3", qty: 2 })).ok).toBe(true);
+
+    const b = make("Buy another washing-up liquid please");
+    await b.s.call("search_catalog", { query: "washing-up liquid" });
+    expect((await b.s.call("propose_purchase", { sku: "wul-500", qty: 1 })).ok).toBe(true);
+  });
+
   it("history is turned into alternating messages that end with the agent", () => {
     const m = historyMessages([
       { role: "agent", text: "stray reply first" },

@@ -57,6 +57,14 @@ const ProposeIn = z.object({ sku: z.string().min(1).max(64), qty: z.number().int
 
 const money = (minor: number) => `$${(minor / 100).toFixed(2)}`;
 
+/** Words that say nothing about which product it is. */
+const GENERIC = new Set(["pack", "ml", "500ml", "17l", "sheet", "500", "50", "store", "black"]);
+/** Does the message name this product (any distinctive word of its title)? */
+export const mentions = (message: string, title: string) => {
+  const said = new Set(tokens(message));
+  return tokens(title).some((t) => t.length > 2 && !GENERIC.has(t) && said.has(t));
+};
+
 /**
  * Wraps the catalogue and the governor for one agent task, and tracks
  * provenance. A product counts as agent-originated only if a search
@@ -68,7 +76,21 @@ export class AgentSession {
   private untrustedVocab = new Set<string>();
   private discovered = new Map<string, boolean>(); // sku -> found by a clean search?
 
-  constructor(private d: { task: string; mandateId: string; catalog: Catalog; propose: ProposeFn; via?: string; web?: PageReader | null; earlierReplies?: string }) {
+  constructor(
+    private d: {
+      task: string;
+      mandateId: string;
+      catalog: Catalog;
+      propose: ProposeFn;
+      via?: string;
+      web?: PageReader | null;
+      /** The agent's replies in earlier turns of the conversation. */
+      earlierReplies?: string;
+      /** Products already proposed in earlier turns, and the user's newest message. */
+      earlierItems?: string[];
+      newestTask?: string;
+    },
+  ) {
     this.taskVocab = new Set(tokens(d.task));
     // The agent's earlier replies can repeat untrusted page text: words only they contain are untrusted too.
     if (d.earlierReplies) this.taint(d.earlierReplies);
@@ -158,6 +180,10 @@ export class AgentSession {
     const { sku, qty } = parsed.data;
     const p = this.d.catalog.get(sku);
     if (!p) return { ok: false, error: `No product with sku "${sku}".` };
+    // A follow-up must not buy an earlier turn's item again unless the newest message asks for it.
+    if (this.d.earlierItems?.includes(sku) && !mentions(this.d.newestTask ?? "", p.title)) {
+      return { ok: false, error: `${p.title} was already handled earlier in this conversation. Don't buy it again unless the user's newest message asks for it.` };
+    }
     const proposal: Proposal = {
       mandateId: this.d.mandateId,
       order: {

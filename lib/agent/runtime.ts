@@ -46,7 +46,8 @@ export const AGENT_SYSTEM = `You are Mandate's shopping agent. You buy things fo
 - Keep the final message short: what you bought, what needs approval, what was blocked and why.`;
 
 /** A previous turn of the conversation: the user's words, or the agent's final reply. */
-export type Turn = { role: "user" | "agent"; text: string };
+/** A previous turn of the conversation: the user's words, or the agent's final reply and the products it proposed. */
+export type Turn = { role: "user" | "agent"; text: string; skus?: string[] };
 
 /**
  * Earlier turns as model messages: alternating, starting with the user and ending with the agent,
@@ -91,7 +92,8 @@ export async function runAgentTask(opts: {
   // (they can repeat text from untrusted pages).
   const userWords = [...history.filter((t) => t.role === "user").map((t) => t.text), opts.task].join("\n");
   const earlierReplies = history.filter((t) => t.role === "agent").map((t) => t.text).join(" ");
-  const session = new AgentSession({ task: userWords, earlierReplies, mandateId: opts.mandateId, catalog: opts.catalog, propose: opts.propose, web: opts.web });
+  const earlierItems = [...new Set(history.flatMap((t) => t.skus ?? []))];
+  const session = new AgentSession({ task: userWords, earlierReplies, earlierItems, newestTask: opts.task, mandateId: opts.mandateId, catalog: opts.catalog, propose: opts.propose, web: opts.web });
   const tools = session.tools();
   const events: AgentEvent[] = [];
   const emit = (e: AgentEvent) => {

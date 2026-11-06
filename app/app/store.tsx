@@ -139,7 +139,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         .slice(-5)
         .flatMap((t) => [
           { role: "user" as const, text: t.task.slice(0, 2000) },
-          { role: "agent" as const, text: (t.final ?? "").slice(0, 2000) },
+          {
+            role: "agent" as const,
+            text: (t.final ?? "").slice(0, 2000),
+            skus: t.events.flatMap((e) => (e.kind === "tool" && e.name === "propose_purchase" && e.ok ? [String(e.input.sku)] : [])).slice(0, 20),
+          },
         ])
         .filter((t) => t.text);
       setTurns((all) => [...all, { task, drill, events: [] }]);

@@ -16,7 +16,7 @@ const Body = z
     drill: z.boolean().optional(),
     /** Earlier turns of this conversation, oldest first: the user's words and the agent's replies. */
     history: z
-      .array(z.object({ role: z.enum(["user", "agent"]), text: z.string().max(2000) }).strict())
+      .array(z.object({ role: z.enum(["user", "agent"]), text: z.string().max(2000), skus: z.array(z.string().max(64)).max(20).optional() }).strict())
       .max(12)
       .optional(),
     /** Stream steps as NDJSON lines ({type:"event"} … then {type:"done"}) so the UI can show them live. */
