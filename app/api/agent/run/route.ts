@@ -14,17 +14,22 @@ const Body = z
     task: z.string().trim().min(1).max(500),
     /** Compromised-agent drill: a planner that obeys product pages. */
     drill: z.boolean().optional(),
+    /** Earlier turns of this conversation, oldest first: the user's words and the agent's replies. */
+    history: z
+      .array(z.object({ role: z.enum(["user", "agent"]), text: z.string().max(2000) }).strict())
+      .max(12)
+      .optional(),
     /** Stream steps as NDJSON lines ({type:"event"} … then {type:"done"}) so the UI can show them live. */
     stream: z.boolean().optional(),
   })
   .strict();
 
 export const POST = handle(async (req: Request) => {
-  const { mandateId, task, drill, stream } = await readBody(req, Body);
+  const { mandateId, task, drill, stream, history } = await readBody(req, Body);
   const c = getContainer();
   if (!(await c.mandates.get(mandateId))) throw new HttpError(404, "Mandate not found.");
   enforceLimit(req, c);
-  const opts = { task, mandateId, llm: c.newLlm({ drill }), catalog: c.catalog, propose: c.governor.propose.bind(c.governor), web: c.web };
+  const opts = { task, history, mandateId, llm: c.newLlm({ drill }), catalog: c.catalog, propose: c.governor.propose.bind(c.governor), web: c.web };
   if (!stream) return json(await runAgentTask(opts));
 
   const enc = new TextEncoder();

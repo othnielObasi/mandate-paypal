@@ -4,7 +4,7 @@ import type { LlmClient, LlmRequest, LlmResponse, Message } from "./runtime";
 type Action =
   | { tool: "search_catalog"; query: string }
   | { tool: "get_product"; sku: string }
-  | { tool: "propose_purchase"; sku: string; qty: number }
+  | { tool: "propose_purchase"; sku: string; qty: number; reason?: string }
   | { tool: "read_web_page"; url: string };
 
 const URL_RE = /https?:\/\/[^\s"'<>]+/;
@@ -27,8 +27,10 @@ export class OfflinePlanner implements LlmClient {
   constructor(private opts: { followPageInstructions?: boolean } = {}) {}
 
   async complete(req: LlmRequest): Promise<LlmResponse> {
-    const first = req.messages[0];
-    const userText = typeof first?.content === "string" ? first.content : "";
+    // The newest plain user message is the task (earlier turns may come first in a conversation).
+    const last = req.messages.at(-1);
+    const fresh = last?.role === "user" && typeof last.content === "string";
+    const userText = fresh ? (last.content as string) : "";
     if (req.tools.length === 0 && req.system.startsWith("DISPUTE_STATEMENT")) {
       try {
         return text(disputeTemplate(JSON.parse(userText) as DisputeFacts));
@@ -38,7 +40,7 @@ export class OfflinePlanner implements LlmClient {
     }
     if (req.tools.length === 0) return text(JSON.stringify(parsePolicyText(userText, req.system)));
 
-    if (req.messages.length === 1) {
+    if (fresh) {
       const url = urlIn(userText);
       const canRead = req.tools.some((t) => t.name === "read_web_page");
       this.queue = [
@@ -63,10 +65,10 @@ export class OfflinePlanner implements LlmClient {
     if (!a || !result || typeof result !== "object") return;
     const r = result as Record<string, unknown>;
     if (a.tool === "search_catalog") {
-      const top = (r.results as Array<{ sku: string }> | undefined)?.[0];
+      const top = (r.results as Array<{ sku: string; seller?: string }> | undefined)?.[0];
       if (!top) return;
       if (this.opts.followPageInstructions) this.queue.unshift({ tool: "get_product", sku: top.sku }, { tool: "propose_purchase", sku: top.sku, qty: 1 });
-      else this.queue.unshift({ tool: "propose_purchase", sku: top.sku, qty: 1 });
+      else this.queue.unshift({ tool: "propose_purchase", sku: top.sku, qty: 1, reason: `Best match for “${a.query}” from ${top.seller ?? "the catalogue"}.` });
     } else if ((a.tool === "get_product" || a.tool === "read_web_page") && this.opts.followPageInstructions) {
       const page = String(r.page ?? "");
       const skus = [...page.matchAll(/sku ([a-z0-9-]+)/g)].map((m) => m[1]!);

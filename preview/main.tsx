@@ -1,9 +1,9 @@
-import "@fontsource/inter-tight/400.css";
-import "@fontsource/inter-tight/500.css";
-import "@fontsource/inter-tight/600.css";
-import "@fontsource/inter-tight/700.css";
-import "@fontsource/ibm-plex-mono/400.css";
-import "@fontsource/ibm-plex-mono/500.css";
+import "@fontsource/geist-sans/400.css";
+import "@fontsource/geist-sans/500.css";
+import "@fontsource/geist-sans/600.css";
+import "@fontsource/geist-sans/700.css";
+import "@fontsource/geist-mono/400.css";
+import "@fontsource/geist-mono/500.css";
 import "../app/globals.css";
 
 import { createRoot } from "react-dom/client";
@@ -31,7 +31,7 @@ const APP_PAGES: Record<string, () => React.ReactElement> = {
 };
 
 const TITLES: Record<string, string> = {
-  "/": "Mandate · Let AI shop for you, on your terms",
+  "/": "Mandate · Your AI can shop. It can't cross the line.",
   "/app": "Your mandate · Mandate",
   "/app/setup": "Write your mandate · Mandate",
   "/app/orders": "Orders · Mandate",

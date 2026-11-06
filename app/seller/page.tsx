@@ -1,33 +1,24 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import NextLink from "next/link";
+import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import { AgGridReact } from "ag-grid-react";
-import { AllCommunityModule, ModuleRegistry, type ColDef, type ICellRendererParams } from "ag-grid-community";
 import { api } from "../components/api";
-import { gridTheme } from "../components/grid-theme";
 import { SkRows } from "../components/Skeleton";
 import { Back, Check, Cross, Download, Mark, Shield, ShieldX, Store } from "../components/icons";
 
-ModuleRegistry.registerModules([AllCommunityModule]);
+import type { SellerRow } from "./SellerGrid";
+
+// AG Grid is heavy: load it after the page text is on screen.
+const SellerGrid = dynamic(() => import("./SellerGrid"), { ssr: false, loading: () => <SkRows rows={3} /> });
 
 type CheckRow = { id: string; label: string; ok: boolean; detail: string };
-type Row = { paypalOrderId: string; paymentMandateId: string; ok: boolean; mode: "human_not_present" | "human_present"; merchant: string; total: string; items: string[]; createdAt: string; ap2: boolean | null };
+type Row = SellerRow;
 type Ap2 = { spec: string; ok: boolean; mode: "human_present" | "human_not_present"; checks: CheckRow[]; evidence: Record<string, unknown> };
 type Detail = Row & { checks: CheckRow[]; notes: string[]; chain: unknown; ap2: Ap2 | null };
 type Trust = { merchants: Record<string, { name: string; verified: boolean }> };
 
-function Verdict(p: ICellRendererParams<Row, boolean>) {
-  return p.value ? <span className="chip chip-allow">Safe to fulfil</span> : <span className="chip chip-block">Don&rsquo;t ship</span>;
-}
-function Ap2Cell(p: ICellRendererParams<Row, boolean | null>) {
-  if (p.value === null || p.value === undefined) return <span className="chip chip-outline">Not issued</span>;
-  return p.value ? <span className="chip chip-allow">Verified</span> : <span className="chip chip-block">Failed</span>;
-}
-function Mode(p: ICellRendererParams<Row, Row["mode"]>) {
-  return p.value === "human_present" ? <span className="chip chip-ask">Buyer approved</span> : <span className="chip chip-accent">Within signed intent</span>;
-}
 
 /** AP2 v0.2 (current spec): what each link in the chain proves, by check id. */
 const AP2_GROUPS: Array<{ name: string; ids: string[]; who: (d: Detail) => string }> = [
@@ -78,18 +69,6 @@ function SellerView() {
       .catch((e) => setError(String(e)));
   }, [merchantId]);
 
-  const columns = useMemo<ColDef<Row>[]>(
-    () => [
-      { field: "createdAt", headerName: "Time", width: 100, sort: "desc", valueFormatter: (p) => (p.value ? new Date(p.value as string).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : "") },
-      { field: "items", headerName: "Items", flex: 1, minWidth: 180, valueFormatter: (p) => ((p.value as string[]) ?? []).join(", ") },
-      { field: "total", headerName: "Total", width: 100 },
-      { field: "mode", headerName: "Authorised by", width: 190, cellRenderer: Mode, cellClass: "chipcell" },
-      { field: "ap2", headerName: "AP2 v0.2", width: 130, cellRenderer: Ap2Cell, cellClass: "chipcell" },
-      { colId: "verdict", headerName: "Verdict", width: 160, valueGetter: (p) => !!p.data && p.data.ok && p.data.ap2 !== false, cellRenderer: Verdict, cellClass: "chipcell" },
-      { field: "paypalOrderId", headerName: "PayPal order", width: 190, cellClass: "mono" },
-    ],
-    [],
-  );
   const merchants = trust?.merchants ?? { "acme-supplies": { name: "Acme Supplies", verified: true } };
   const name = merchants[merchantId]?.name ?? merchantId;
   const ap2 = detail?.ap2 ?? null;
@@ -158,17 +137,7 @@ function SellerView() {
                   <SkRows rows={3} />
                 </div>
               ) : (
-              <AgGridReact<Row>
-                theme={gridTheme}
-                rowData={rows}
-                columnDefs={columns}
-                getRowId={(p) => p.data.paypalOrderId}
-                domLayout="autoHeight"
-                rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
-                onRowClicked={(e) => e.data && open(e.data.paypalOrderId)}
-                overlayNoRowsTemplate="No agent payments yet. Run the agent from the buyer view."
-                defaultColDef={{ sortable: true, resizable: true, filter: true }}
-              />
+              <SellerGrid rows={rows} onOpen={open} />
               )}
             </div>
           </section>
@@ -291,6 +260,29 @@ function SellerView() {
                       Public keys
                     </a>
                   </div>
+                  <details className="incode mt-16">
+                    <summary>
+                      Check this payment in code <span className="chip chip-outline">APIMatic SDK</span>
+                    </summary>
+                    <pre className="code" tabIndex={0} aria-label="Code: check this payment with the SDK">{`import {
+  MandateApiClient,
+  ServerEnvironment,
+} from "mandate-api";
+
+const mandate = new MandateApiClient({
+  serverEnvironment: ServerEnvironment.Production,
+});
+
+const v = await mandate.verification.verifyOrder({
+  paypalOrderId: "${detail.paypalOrderId}",
+});
+
+// ${safe ? "This one: safe to fulfil" : "This one: don't ship"}
+if (v.ok && v.ap2?.ok) fulfil(); else hold();`}</pre>
+                    <p className="tiny">
+                      Mandate&rsquo;s TypeScript SDK, generated by APIMatic from the OpenAPI spec. <NextLink href="/developers#sdk">More about the SDK</NextLink>
+                    </p>
+                  </details>
                 </div>
               </div>
             )}

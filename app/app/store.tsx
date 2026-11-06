@@ -11,11 +11,14 @@ import type { OrderView } from "../components/Orders";
 export type Mandate = { id: string; status: "active" | "paused" | "revoked"; policy: Policy; rawText: string; createdAt: string; intentMandate?: { user_authorization?: string } };
 export type Budget = { mandate: Mandate; spentMinor: number; reservedMinor: number; remainingMinor: number };
 export type Decision = { outcome: "allow" | "approve" | "block"; rule: string; reason: string };
-export type ProposeResult = { status: string; decision?: Decision; approveUrl?: string; error?: string; paypalOrderId?: string; approvalId?: string };
+export type TraceStep = { rule: string; label: string; value: string; status: "pass" | "ask" | "block" | "approved" | "skip" | "off" };
+export type GateTrace = { steps: TraceStep[]; outcome: "allow" | "approve" | "block" };
+export type ProposeResult = { status: string; decision?: Decision; approveUrl?: string; error?: string; paypalOrderId?: string; approvalId?: string; trace?: GateTrace };
 export type AgentEvent = { kind: "text"; text: string } | { kind: "tool"; name: string; input: Record<string, unknown>; ok: boolean; result: unknown };
 export type Approval = { id: string; summary: string; decision: Decision; expiresAt: string; createdAt: string };
 export type Health = { provider: string; model: string; signingKey: string; market: string; storage?: string };
-export type Run = { task: string; drill: boolean; events: AgentEvent[] };
+/** One turn of the conversation: what you asked, every step the agent took, and its closing reply. */
+export type Run = { task: string; drill: boolean; events: AgentEvent[]; final?: string };
 
 type Store = {
   ready: boolean;
@@ -26,14 +29,18 @@ type Store = {
   orders: OrderView[];
   receipts: Receipt[];
   activity: Activity[];
+  /** The latest turn. */
   run: Run | null;
+  /** The whole conversation with the agent, oldest first. */
+  turns: Run[];
+  /** Start a new conversation. */
+  newChat: () => void;
   busy: boolean;
   error: string | null;
   clearError: () => void;
   refresh: (id?: string) => Promise<void>;
   act: <T>(fn: () => Promise<T>) => Promise<T | undefined>;
   toast: (msg: string) => void;
-  setRun: (r: Run | null) => void;
   runAgent: (task: string, drill: boolean) => Promise<void>;
   decide: (id: string, choice: "approve" | "decline") => Promise<ProposeResult | undefined>;
   /** Passkeys that sign approvals; empty means approvals use the demo key. */
@@ -60,7 +67,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [orders, setOrders] = useState<OrderView[]>([]);
   const [passkeys, setPasskeys] = useState<PasskeyView[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [run, setRun] = useState<Run | null>(null);
+  const [turns, setTurns] = useState<Run[]>([]);
+  const turnsRef = useRef<Run[]>([]);
+  turnsRef.current = turns;
+  /** Replace the latest turn. */
+  const setLast = useCallback((t: Run) => setTurns((all) => [...all.slice(0, -1), t]), []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -76,6 +87,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async (id?: string) => {
     const mid = id ?? idRef.current;
     if (id) {
+      if (idRef.current !== id) setTurns([]);
       idRef.current = id;
       setMandateId(id);
     }
@@ -121,9 +133,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     async (task: string, drill: boolean) => {
       const id = idRef.current;
       if (!id) return;
-      setRun({ task, drill, events: [] });
+      // Earlier turns go along as context (drills are simulations of a compromised agent, so they stay out).
+      const history = turnsRef.current
+        .filter((t) => !t.drill)
+        .slice(-5)
+        .flatMap((t) => [
+          { role: "user" as const, text: t.task.slice(0, 2000) },
+          { role: "agent" as const, text: (t.final ?? "").slice(0, 2000) },
+        ])
+        .filter((t) => t.text);
+      setTurns((all) => [...all, { task, drill, events: [] }]);
       await act(async () => {
-        const res = await fetch("/api/agent/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mandateId: id, task, drill, stream: true }) });
+        const res = await fetch("/api/agent/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mandateId: id, task, drill, stream: true, history }) });
         if (!res.ok || !res.body) {
           const b = (await res.json().catch(() => ({}))) as { error?: string };
           throw new Error(b.error ?? `Request failed (${res.status})`);
@@ -149,9 +170,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               if (wait > 0) await new Promise((r) => setTimeout(r, wait));
               last = Date.now();
               events.push(msg.event);
-              setRun({ task, drill, events: [...events] });
+              setLast({ task, drill, events: [...events] });
               if (msg.event.kind === "tool" && msg.event.name === "propose_purchase") void refresh();
-            } else if (msg.type === "done") setRun({ task, drill, events: msg.result.events });
+            } else if (msg.type === "done") setLast({ task, drill, events: msg.result.events, final: (msg.result as { final?: string }).final });
             else failed = msg.error;
           }
           if (done) break;
@@ -160,7 +181,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         await refresh();
       });
     },
-    [act, refresh],
+    [act, refresh, setLast],
   );
 
   const decide = useCallback(
@@ -169,7 +190,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         // With a registered passkey, the device signs this exact cart; otherwise the demo key does.
         const passkey = choice === "approve" && passkeys.length ? await signApproval(approvalId) : undefined;
         const r = await api<ProposeResult>(`/api/approvals/${approvalId}`, { method: "POST", body: JSON.stringify({ choice, ...(passkey ? { passkey } : {}) }) });
-        setRun((cur) => (cur ? { ...cur, events: [...cur.events, { kind: "tool", name: "your_decision", input: { choice }, ok: true, result: r }] } : cur));
+        // Add the decision to the turn that asked for it.
+        const step: AgentEvent = { kind: "tool", name: "your_decision", input: { choice, approvalId }, ok: true, result: r };
+        setTurns((all) => {
+          const asked = (t: Run) => t.events.some((e) => e.kind === "tool" && (e.result as ProposeResult | undefined)?.approvalId === approvalId);
+          const at = all.map(asked).lastIndexOf(true);
+          const i = at >= 0 ? at : all.length - 1;
+          return i < 0 ? all : all.map((t, j) => (j === i ? { ...t, events: [...t.events, step] } : t));
+        });
         await refresh();
         if (choice === "decline") toast("Declined. No money moved.");
         else if (r.status === "paid") toast(passkey ? "Signed with your passkey and paid with PayPal." : "Approved and paid with PayPal.");
@@ -203,7 +231,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     orders,
     receipts,
     activity,
-    run,
+    run: turns.at(-1) ?? null,
+    turns,
+    newChat: () => setTurns([]),
     busy,
     error,
     clearError: () => setError(null),
@@ -212,7 +242,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     toast,
     passkeys,
     addPasskey,
-    setRun,
     runAgent,
     decide,
   };

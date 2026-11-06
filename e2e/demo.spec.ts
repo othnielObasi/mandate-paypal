@@ -24,7 +24,7 @@ const feed = (page: Page) => page.getByTestId("feed");
 test.describe("landing page", () => {
   test("explains the product and leads into the app", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Let AI shop for you");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Your AI can shop");
     for (const h of ["One sentence becomes rules", "Pays, asks you, or never happens", "Know an agent", "Use the AI you already have"]) {
       await expect(page.getByRole("heading", { name: new RegExp(h) }).first()).toBeVisible();
     }

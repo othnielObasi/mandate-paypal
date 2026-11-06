@@ -2,7 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { api, merchantName, usd } from "../../components/api";
-import { Ledger } from "../../components/Ledger";
+import dynamic from "next/dynamic";
+import { SkRows } from "../../components/Skeleton";
+
+// AG Grid is heavy: load the ledger after the page text is on screen.
+const Ledger = dynamic(() => import("../../components/Ledger").then((m) => m.Ledger), {
+  ssr: false,
+  loading: () => (
+    <section className="card" aria-busy="true" aria-label="Loading the ledger">
+      <SkRows rows={6} />
+    </section>
+  ),
+});
 import { useStore } from "../store";
 
 export default function ReceiptsPage() {

@@ -12,6 +12,7 @@ import type { Ap2PurchaseRecord } from "../ap2v2/records";
 import { verifyChain } from "../ap2v2/sdjwt";
 import { orderDigest, orderTotalMinor } from "../gate/canonical";
 import { evaluate } from "../gate/evaluate";
+import { explain, type GateTrace } from "../gate/explain";
 import type { Signer } from "../gate/keys";
 import { issuePermit, type Permit, type PermitStore } from "../gate/permits";
 import { formatMoney, parsePolicy, type Policy } from "../gate/policy";
@@ -25,13 +26,18 @@ import type { ApprovalStore, MandateRecord, MandateStore, Proposal } from "./sto
 
 export const APPROVAL_TTL_MS = 15 * 60_000;
 
-export type ProposeResult =
+/** What the gate checked, rule by rule, for people (see explain.ts). Absent when a pre-gate check stopped the purchase. */
+type Traced = { trace?: GateTrace };
+
+export type ProposeResult = (
   | { status: "paid"; decision: Decision; paypalOrderId: string; amountMinor: number; paymentMandateId: string }
   | { status: "awaiting_buyer"; decision: Decision; paypalOrderId: string; approveUrl: string; amountMinor: number; paymentMandateId: string }
   | { status: "pending_approval"; decision: Decision; approvalId: string }
   | { status: "blocked"; decision: Decision }
   | { status: "declined" }
-  | { status: "failed"; decision: Decision; error: string };
+  | { status: "failed"; decision: Decision; error: string }
+) &
+  Traced;
 
 interface Deps {
   mandates: MandateStore;
@@ -131,7 +137,14 @@ export class Governor {
   }
 
   async propose(p: Proposal): Promise<ProposeResult> {
-    return this.run(p, false);
+    return this.traced((sink) => this.run(p, false, undefined, sink));
+  }
+
+  /** Runs a purchase and attaches the gate's rule-by-rule trace, when the gate was reached. */
+  private async traced(fn: (sink: Traced) => Promise<ProposeResult>): Promise<ProposeResult> {
+    const sink: Traced = {};
+    const r = await fn(sink);
+    return sink.trace ? { ...r, trace: sink.trace } : r;
   }
 
   async decide(approvalId: string, choice: "approve" | "decline", opts: { passkey?: PasskeyAssertion } = {}): Promise<ProposeResult> {
@@ -163,7 +176,7 @@ export class Governor {
       payload: { approvalId, choice, ...(passkey ? { passkey: passkey.credentialId } : {}) },
     });
     if (choice === "decline") return { status: "declined" };
-    return this.run(a.proposal, true, passkey);
+    return this.traced((sink) => this.run(a.proposal, true, passkey, sink));
   }
 
   /** After PayPal confirms a capture: the merchant and the payment gateway issue AP2 receipts. */
@@ -202,7 +215,7 @@ export class Governor {
     return r;
   }
 
-  private async run(p: Proposal, approved: boolean, passkey?: PasskeyApproval): Promise<ProposeResult> {
+  private async run(p: Proposal, approved: boolean, passkey?: PasskeyApproval, sink?: Traced): Promise<ProposeResult> {
     const now = this.d.clock();
     const mandate = await this.d.mandates.get(p.mandateId);
     if (!mandate) return block("invalid_input", "Unknown mandate.");
@@ -242,6 +255,7 @@ export class Governor {
       const at = this.d.clock();
       const { spentMinor, reservedMinor } = await this.ledger.committed(mandate.id, mandate.policy.budget.period, at);
       const decision = evaluate(mandate, intent, { now, spentMinor, reservedMinor, approved });
+      if (sink) sink.trace = explain(mandate, intent, { now, spentMinor, reservedMinor, approved });
       const digest = orderDigest(order);
       const money = formatMoney(amountMinor, order.currency);
       const label = { allow: "Allowed", approve: "Needs approval", block: "Blocked" }[decision.outcome];

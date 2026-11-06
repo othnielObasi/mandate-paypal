@@ -18,7 +18,26 @@ info:
   contact:
     name: Mandate on GitHub
     url: https://github.com/othnielObasi/mandate-paypal
+  # APIMatic: named environments for the generated SDKs (Production / Local).
+  x-server-configuration:
+    default-environment: production
+    default-server: default
+    environments:
+      - name: production
+        description: Hosted demo (Render, PayPal sandbox)
+        servers:
+          - name: default
+            url: https://mandate-e13m.onrender.com
+            description: Hosted demo on Render
+      - name: local
+        description: Local (npm run dev)
+        servers:
+          - name: default
+            url: http://localhost:3000
+            description: Your machine
 servers:
+  - url: https://mandate-e13m.onrender.com
+    description: Hosted demo (Render, PayPal sandbox)
   - url: http://localhost:3000
     description: Local (npm run dev)
 # Public: verification needs no credentials, and the demo has a single user with no login.
@@ -52,26 +71,14 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [action]
-              properties:
-                action: { type: string, enum: [pause, resume, revoke] }
-                mandateId: { type: string }
+            schema: { $ref: "#/components/schemas/KillSwitchRequest" }
             example: { action: pause }
       responses:
         "200":
           description: The mandates that changed
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  ok: { type: boolean }
-                  action: { type: string }
-                  status: { type: string, enum: [active, paused, revoked] }
-                  changed: { type: array, items: { type: string } }
+              schema: { $ref: "#/components/schemas/KillSwitchResult" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { description: Missing or wrong bearer token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -81,13 +88,17 @@ paths:
       tags: [Demo]
       operationId: getHealth
       summary: Server status and which services are live or simulated
+      description: |
+        Which integrations this server is running with: real PayPal sandbox or simulated payments, the
+        model behind the agent, where data is stored, and whether Zapier alerts and the kill switch are on.
+        Always sandbox-only.
       responses:
         "200":
           description: Status
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Health" }
-              example: { ok: true, provider: simulated, model: offline-planner, signingKey: ephemeral, storage: memory, market: simulated market, sandboxOnly: true }
+              example: { ok: true, provider: simulated, model: offline-planner, modelProvider: offline, signingKey: ephemeral, storage: memory, market: simulated market, web: own-pages, automation: { alerts: "off", killSwitch: "off" }, sandboxOnly: true }
 
   /api/verify/{paypalOrderId}:
     get:
@@ -134,6 +145,9 @@ paths:
       tags: [Verification]
       operationId: listSellerPayments
       summary: A merchant's agent payments with their verdicts
+      description: |
+        Every agent payment to a merchant, newest first, each with its Mandate v1 verdict and AP2 v0.2
+        result. A seller's queue of "safe to fulfil" and "don't ship" orders.
       parameters:
         - name: merchantId
           in: query
@@ -159,14 +173,7 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [intent, cart, payment]
-              properties:
-                intent: { type: object, description: Intent Mandate as returned in `chain.intent` }
-                cart: { type: object, description: Cart Mandate as returned in `chain.cart` }
-                payment: { type: object, description: Payment Mandate as returned in `chain.payment` }
+            schema: { $ref: "#/components/schemas/VerifyChainRequest" }
       responses:
         "200":
           description: Verdict
@@ -193,6 +200,9 @@ paths:
       tags: [Keys]
       operationId: getTrust
       summary: All public keys, Mandate v1 (Ed25519 PEM) and AP2 v0.2 (JWKS)
+      description: |
+        The full trust bundle in one call: users' and merchants' Ed25519 keys (with each merchant's
+        verified status), the platform key, and the AP2 JWKS. Cache it to verify payments offline.
       responses:
         "200":
           description: Keys
@@ -205,6 +215,7 @@ paths:
       tags: [Keys]
       operationId: getReceiptPublicKey
       summary: Ed25519 public key that signs receipts and permits
+      description: The PEM public key for checking the `signature` on every receipt in the decision log.
       responses:
         "200":
           description: PEM public key
@@ -217,10 +228,14 @@ paths:
       tags: [Receipts]
       operationId: listReceipts
       summary: The signed, hash-chained decision log
+      description: |
+        Every decision Mandate made, in order. Each receipt carries the hash of the one before it and an
+        Ed25519 signature, so any edit, insertion or deletion breaks the chain.
       parameters:
         - name: mandateId
           in: query
           required: false
+          description: Only this mandate's receipts. Omit for the whole log.
           schema: { type: string }
       responses:
         "200":
@@ -236,6 +251,7 @@ paths:
       tags: [Receipts]
       operationId: verifyServerLog
       summary: Verify the server's own log
+      description: Re-checks every hash link and signature in the server's decision log.
       responses:
         "200":
           description: Result
@@ -251,14 +267,7 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [receipts]
-              properties:
-                receipts:
-                  type: array
-                  maxItems: 5000
-                  items: { $ref: "#/components/schemas/Receipt" }
+            schema: { $ref: "#/components/schemas/VerifyLogRequest" }
       responses:
         "200":
           description: Result
@@ -275,6 +284,7 @@ paths:
       tags: [Demo]
       operationId: listMandates
       summary: The demo user's mandates
+      description: Every mandate the demo user has signed, with its rules and status (active, paused or revoked).
       responses:
         "200":
           description: Mandates
@@ -288,20 +298,14 @@ paths:
       operationId: createMandate
       summary: Sign spending rules
       description: |
-        With only `text`, the rules reader (Claude, or the offline reader) turns the sentence into a
-        policy and Mandate signs it. With `policy`, the rules the user reviewed are validated and signed.
-        Rate limited when the model is called.
+        With only `text`, the rules reader (the configured model, or the offline reader) turns the
+        sentence into a policy and Mandate signs it. With `policy`, the rules the user reviewed are
+        validated and signed. Rate limited when the model is called.
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [text]
-              properties:
-                text: { type: string, maxLength: 2000 }
-                policy: { $ref: "#/components/schemas/Policy" }
+            schema: { $ref: "#/components/schemas/CreateMandateRequest" }
             example:
               text: Household basics, up to $80 a month, nothing over $25, never more than 10% above market price, verified sellers only
       responses:
@@ -326,15 +330,7 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [mandateId, task]
-              properties:
-                mandateId: { type: string }
-                task: { type: string, maxLength: 500 }
-                drill: { type: boolean, description: "Compromised-agent drill: a planner that obeys product pages." }
-                stream: { type: boolean }
+            schema: { $ref: "#/components/schemas/RunAgentRequest" }
             example: { mandateId: "{{mandateId}}", task: Buy washing-up liquid and sponges }
       responses:
         "200":
@@ -350,10 +346,12 @@ paths:
       tags: [Demo]
       operationId: listApprovals
       summary: Purchases waiting for the user
+      description: Purchases the gate sent to the user (over a soft limit), with when each request expires.
       parameters:
         - name: mandateId
           in: query
           required: false
+          description: Only this mandate's approvals. Omit for all.
           schema: { type: string }
       responses:
         "200":
@@ -377,26 +375,13 @@ paths:
         - name: id
           in: path
           required: true
+          description: The approval ID from `listApprovals` or the agent run.
           schema: { type: string }
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [choice]
-              properties:
-                choice: { type: string, enum: [approve, decline] }
-                passkey:
-                  type: object
-                  additionalProperties: false
-                  required: [credentialId, clientDataJSON, authenticatorData, signature]
-                  properties:
-                    credentialId: { type: string }
-                    clientDataJSON: { type: string }
-                    authenticatorData: { type: string }
-                    signature: { type: string }
+            schema: { $ref: "#/components/schemas/DecideApprovalRequest" }
       responses:
         "200":
           description: Outcome
@@ -447,6 +432,79 @@ components:
       properties:
         error: { type: string }
 
+    # ---------- Requests ----------
+    KillSwitchRequest:
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties:
+        action: { type: string, enum: [pause, resume, revoke] }
+        mandateId: { type: string, description: Only this mandate. Omit for all of the user's mandates. }
+
+    VerifyChainRequest:
+      type: object
+      additionalProperties: false
+      required: [intent, cart, payment]
+      properties:
+        intent: { type: object, description: Intent Mandate as returned in `chain.intent` }
+        cart: { type: object, description: Cart Mandate as returned in `chain.cart` }
+        payment: { type: object, description: Payment Mandate as returned in `chain.payment` }
+
+    VerifyLogRequest:
+      type: object
+      required: [receipts]
+      properties:
+        receipts:
+          type: array
+          maxItems: 5000
+          items: { $ref: "#/components/schemas/Receipt" }
+
+    CreateMandateRequest:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: { type: string, maxLength: 2000, description: The rules in plain English }
+        policy: { $ref: "#/components/schemas/Policy" }
+
+    RunAgentRequest:
+      type: object
+      additionalProperties: false
+      required: [mandateId, task]
+      properties:
+        mandateId: { type: string }
+        task: { type: string, maxLength: 500 }
+        drill: { type: boolean, description: "Compromised-agent drill: a planner that obeys product pages." }
+        stream: { type: boolean, description: Stream NDJSON, one step per line }
+
+    DecideApprovalRequest:
+      type: object
+      additionalProperties: false
+      required: [choice]
+      properties:
+        choice: { type: string, enum: [approve, decline] }
+        passkey: { $ref: "#/components/schemas/PasskeyAssertion" }
+
+    PasskeyAssertion:
+      type: object
+      description: A WebAuthn assertion over the approval's challenge (base64url fields).
+      additionalProperties: false
+      required: [credentialId, clientDataJSON, authenticatorData, signature]
+      properties:
+        credentialId: { type: string }
+        clientDataJSON: { type: string }
+        authenticatorData: { type: string }
+        signature: { type: string }
+
+    # ---------- Responses ----------
+    KillSwitchResult:
+      type: object
+      properties:
+        ok: { type: boolean }
+        action: { type: string }
+        status: { type: string, enum: [active, paused, revoked] }
+        changed: { type: array, items: { type: string }, description: IDs of the mandates that changed }
+
     Health:
       type: object
       properties:
@@ -458,12 +516,14 @@ components:
         storage: { type: string, enum: [postgres, memory] }
         market: { type: string }
         web: { type: string, enum: [kernel, own-pages], description: "KERNEL cloud browser, or only the app's own /demo pages" }
-        automation:
-          type: object
-          properties:
-            alerts: { type: string, enum: [zapier, "off"] }
-            killSwitch: { type: string, enum: ["on", "off"] }
-        sandboxOnly: { type: boolean, const: true }
+        automation: { $ref: "#/components/schemas/AutomationStatus" }
+        sandboxOnly: { type: boolean, description: Always true. Mandate never moves real money. }
+
+    AutomationStatus:
+      type: object
+      properties:
+        alerts: { type: string, enum: [zapier, "off"] }
+        killSwitch: { type: string, enum: ["on", "off"] }
 
     AutomationEvent:
       type: object
@@ -475,16 +535,18 @@ components:
         mandateId: { type: string }
         at: { type: string, format: date-time }
         link: { type: string, description: "Where to act (the app), or the payment's public verdict" }
-        receipt:
-          type: object
-          description: The signed log entry this event reports
-          properties:
-            seq: { type: integer }
-            hash: { type: string }
+        receipt: { $ref: "#/components/schemas/ReceiptRef" }
         approvalId: { type: string }
         paypalOrderId: { type: string }
         rule: { type: string, description: The rule that blocked the purchase }
         status: { type: string, enum: [active, paused, revoked] }
+
+    ReceiptRef:
+      type: object
+      description: The signed log entry an event reports
+      properties:
+        seq: { type: integer }
+        hash: { type: string }
 
     Check:
       type: object
@@ -506,40 +568,48 @@ components:
     OrderVerdict:
       allOf:
         - $ref: "#/components/schemas/ChainVerdict"
-        - type: object
-          properties:
-            paypalOrderId: { type: string }
-            paymentMandateId: { type: string }
-            mode: { type: string, enum: [human_not_present, human_present] }
-            merchant: { type: string }
-            total: { type: string, example: USD 4.50 }
-            items: { type: array, items: { type: string } }
-            createdAt: { type: string, format: date-time }
-            chain:
-              type: object
-              description: Mandate v1 credentials (Ed25519 JWS). Post them to `/api/verify` to re-check.
-              properties:
-                intent: { type: object }
-                cart: { type: object }
-                payment: { type: object }
-            ap2:
-              oneOf:
-                - $ref: "#/components/schemas/Ap2Verdict"
-                - type: "null"
+        - $ref: "#/components/schemas/OrderDetails"
+
+    OrderDetails:
+      type: object
+      properties:
+        paypalOrderId: { type: string }
+        paymentMandateId: { type: string }
+        mode: { type: string, enum: [human_not_present, human_present] }
+        merchant: { type: string }
+        total: { type: string, example: USD 4.50 }
+        items: { type: array, items: { type: string } }
+        createdAt: { type: string, format: date-time }
+        chain: { $ref: "#/components/schemas/CredentialChain" }
+        ap2:
+          oneOf:
+            - $ref: "#/components/schemas/Ap2Verdict"
+            - type: "null"
+
+    CredentialChain:
+      type: object
+      description: Mandate v1 credentials (Ed25519 JWS). Post them to `/api/verify` to re-check.
+      properties:
+        intent: { type: object }
+        cart: { type: object }
+        payment: { type: object }
 
     SellerPayment:
       allOf:
         - $ref: "#/components/schemas/ChainVerdict"
-        - type: object
-          properties:
-            paypalOrderId: { type: string }
-            paymentMandateId: { type: string }
-            mode: { type: string }
-            merchant: { type: string }
-            total: { type: string }
-            items: { type: array, items: { type: string } }
-            createdAt: { type: string, format: date-time }
-            ap2: { type: [boolean, "null"], description: "AP2 v0.2 verdict, null if no AP2 evidence" }
+        - $ref: "#/components/schemas/SellerPaymentDetails"
+
+    SellerPaymentDetails:
+      type: object
+      properties:
+        paypalOrderId: { type: string }
+        paymentMandateId: { type: string }
+        mode: { type: string }
+        merchant: { type: string }
+        total: { type: string }
+        items: { type: array, items: { type: string } }
+        createdAt: { type: string, format: date-time }
+        ap2: { type: [boolean, "null"], description: "AP2 v0.2 verdict, null if no AP2 evidence" }
 
     Ap2Verdict:
       type: object
@@ -556,17 +626,21 @@ components:
             payment_matches_checkout, payment_constraints, checkout_receipt, payment_receipt,
             and passkey_approval when the buyer approved on their device.
           items: { $ref: "#/components/schemas/Check" }
-        amount:
-          type: object
-          properties:
-            amount: { type: integer, description: Minor units (cents) }
-            currency: { type: string, example: USD }
-        merchant:
-          type: object
-          properties:
-            id: { type: string }
-            name: { type: string }
+        amount: { $ref: "#/components/schemas/Money" }
+        merchant: { $ref: "#/components/schemas/MerchantRef" }
         evidence: { $ref: "#/components/schemas/Ap2Evidence" }
+
+    Money:
+      type: object
+      properties:
+        amount: { type: integer, description: Minor units (cents) }
+        currency: { type: string, example: USD }
+
+    MerchantRef:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
 
     Ap2Evidence:
       type: object
@@ -576,16 +650,18 @@ components:
         checkoutJwt: { type: string, description: Merchant-signed UCP checkout (ES256 JWT) }
         checkoutChain: { type: string, description: Checkout Mandate SD-JWT chain }
         paymentChain: { type: string, description: Payment Mandate SD-JWT chain }
-        context:
-          type: object
-          description: Budget already used in the period, for the budget constraint
-          properties:
-            totalAmount: { type: integer }
-            totalUses: { type: integer }
+        context: { $ref: "#/components/schemas/BudgetContext" }
         checkoutReceipt: { type: string, description: Merchant receipt (ES256 JWT) }
         paymentReceipt: { type: string, description: Payment gateway receipt with PayPal order and capture IDs (ES256 JWT) }
         openCheckoutHash: { type: string }
         passkey: { type: object, description: "WebAuthn assertion, present when the buyer approved on their device" }
+
+    BudgetContext:
+      type: object
+      description: Budget already used in the period, for the budget constraint
+      properties:
+        totalAmount: { type: integer }
+        totalUses: { type: integer }
 
     Jwk:
       type: object
@@ -609,16 +685,16 @@ components:
       type: object
       properties:
         users: { type: object, additionalProperties: { type: string, description: Ed25519 PEM } }
-        merchants:
-          type: object
-          additionalProperties:
-            type: object
-            properties:
-              publicKey: { type: string }
-              verified: { type: boolean }
-              name: { type: string }
+        merchants: { type: object, additionalProperties: { $ref: "#/components/schemas/TrustedMerchant" } }
         platform: { type: string, description: Ed25519 PEM }
         ap2: { $ref: "#/components/schemas/Jwks" }
+
+    TrustedMerchant:
+      type: object
+      properties:
+        publicKey: { type: string }
+        verified: { type: boolean }
+        name: { type: string }
 
     Receipt:
       type: object
@@ -637,17 +713,23 @@ components:
 
     ChainResult:
       oneOf:
-        - type: object
-          required: [ok, count]
-          properties:
-            ok: { type: boolean, const: true }
-            count: { type: integer }
-        - type: object
-          required: [ok, brokenAt, reason]
-          properties:
-            ok: { type: boolean, const: false }
-            brokenAt: { type: integer, description: seq of the first altered receipt }
-            reason: { type: string, enum: [sequence_gap, chain_break, payload_mismatch, hash_mismatch, bad_signature] }
+        - $ref: "#/components/schemas/ChainIntact"
+        - $ref: "#/components/schemas/ChainBroken"
+
+    ChainIntact:
+      type: object
+      required: [ok, count]
+      properties:
+        ok: { type: boolean, description: Always true for an intact chain }
+        count: { type: integer }
+
+    ChainBroken:
+      type: object
+      required: [ok, brokenAt, reason]
+      properties:
+        ok: { type: boolean, description: Always false for a broken chain }
+        brokenAt: { type: integer, description: seq of the first altered receipt }
+        reason: { type: string, enum: [sequence_gap, chain_break, payload_mismatch, hash_mismatch, bad_signature] }
 
     Policy:
       type: object
@@ -656,20 +738,24 @@ components:
         categories: { type: array, items: { type: string } }
         currency: { type: string, example: USD }
         maxItemMinor: { type: integer }
-        budget:
-          type: object
-          properties:
-            amountMinor: { type: integer }
-            period: { type: string, enum: [week, month] }
-        sellers:
-          type: object
-          properties:
-            verifiedOnly: { type: boolean }
-            blocked: { type: array, items: { type: string } }
+        budget: { $ref: "#/components/schemas/Budget" }
+        sellers: { $ref: "#/components/schemas/SellerRules" }
         overLimit: { type: string, enum: [ask, block] }
         maxPremiumPct: { type: [integer, "null"], description: "Fair-price limit, % above market" }
         marketUnavailable: { type: string, enum: [ask, block, allow] }
         expires: { type: string, format: date }
+
+    Budget:
+      type: object
+      properties:
+        amountMinor: { type: integer }
+        period: { type: string, enum: [week, month] }
+
+    SellerRules:
+      type: object
+      properties:
+        verifiedOnly: { type: boolean }
+        blocked: { type: array, items: { type: string } }
 
     Mandate:
       type: object
@@ -706,17 +792,17 @@ components:
       properties:
         final: { type: string }
         stoppedBy: { type: string, enum: [end, step_limit, model_error] }
-        events:
-          type: array
-          items:
-            type: object
-            properties:
-              kind: { type: string, enum: [text, tool] }
-              text: { type: string }
-              name: { type: string, example: propose_purchase }
-              input: {}
-              ok: { type: boolean }
-              result: { description: "For propose_purchase, a ProposeResult" }
+        events: { type: array, items: { $ref: "#/components/schemas/AgentEvent" } }
+
+    AgentEvent:
+      type: object
+      properties:
+        kind: { type: string, enum: [text, tool] }
+        text: { type: string }
+        name: { type: string, example: propose_purchase }
+        input: {}
+        ok: { type: boolean }
+        result: { description: "For propose_purchase, a ProposeResult" }
 
     Approval:
       type: object

@@ -31,7 +31,11 @@ export const AGENT_TOOLS: ToolDef[] = [
       "Propose buying a product. The policy gate decides: it may pay, ask the user to approve, or block. Price, seller and category always come from the catalogue.",
     input_schema: {
       type: "object",
-      properties: { sku: { type: "string" }, qty: { type: "integer", minimum: 1, maximum: 20 }, reason: { type: "string" } },
+      properties: {
+        sku: { type: "string" },
+        qty: { type: "integer", minimum: 1, maximum: 20 },
+        reason: { type: "string", description: "One short sentence for the user: why this item." },
+      },
       required: ["sku", "qty"],
     },
   },
@@ -64,8 +68,10 @@ export class AgentSession {
   private untrustedVocab = new Set<string>();
   private discovered = new Map<string, boolean>(); // sku -> found by a clean search?
 
-  constructor(private d: { task: string; mandateId: string; catalog: Catalog; propose: ProposeFn; via?: string; web?: PageReader | null }) {
+  constructor(private d: { task: string; mandateId: string; catalog: Catalog; propose: ProposeFn; via?: string; web?: PageReader | null; earlierReplies?: string }) {
     this.taskVocab = new Set(tokens(d.task));
+    // The agent's earlier replies can repeat untrusted page text: words only they contain are untrusted too.
+    if (d.earlierReplies) this.taint(d.earlierReplies);
   }
 
   /** The tools this session offers the model. */

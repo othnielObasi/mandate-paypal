@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AgStudio, AgStudioProvider } from "ag-studio-react";
 import type { AgFieldDefinition, AgReportState } from "ag-studio";
 import type { Insights } from "@/lib/ui/insights";
-import { mandateStudioTheme } from "./studio-theme";
+import { UI, mandateStudioTheme } from "./studio-theme";
 
 // AG Studio licence keys are meant to ship to the browser; without one Studio shows a watermark.
 const LICENSE = process.env.NEXT_PUBLIC_AG_STUDIO_LICENSE_KEY || undefined;
@@ -18,10 +18,10 @@ export const REPORT: AgReportState = {
     {
       id: "overview",
       layout: {
-        backgroundColor: "var(--bg)",
-        widgetBackgroundColor: "var(--surface)",
+        backgroundColor: UI.light.bg,
+        widgetBackgroundColor: UI.light.surface,
         widgetBorderEnabled: true,
-        widgetBorderColor: "var(--line)",
+        widgetBorderColor: UI.light.line,
         widgetBorderWidth: 1,
         widgetBorderRadius: 16,
         widgetPadding: 12,
@@ -144,9 +144,18 @@ export default function Dashboard({ insights, editing }: { insights: Insights; e
   );
   return (
     <AgStudioProvider licenseKey={LICENSE}>
-      <div style={{ height: 900 }}>
-        <AgStudio data={data} initialState={REPORT} mode={editing ? "edit" : "view"} theme={theme} style={{ height: "100%" }} />
+      <div className="studio-wrap" style={{ height: 900 }}>
+        <AgStudio data={data} key={dark ? "dark" : "light"} initialState={reportFor(dark)} mode={editing ? "edit" : "view"} theme={theme} style={{ height: "100%" }} />
       </div>
     </AgStudioProvider>
   );
+}
+
+/** The report with layout colours for the current scheme. Concrete hex: Customise mode's colour pickers can't parse CSS variables. */
+export function reportFor(dark: boolean): AgReportState {
+  const u = dark ? UI.dark : UI.light;
+  return {
+    ...REPORT,
+    pages: REPORT.pages?.map((p) => ({ ...p, layout: { ...p.layout, backgroundColor: u.bg, widgetBackgroundColor: u.surface, widgetBorderColor: u.line } })),
+  } as AgReportState;
 }

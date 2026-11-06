@@ -9,8 +9,8 @@ import { Sk, SkCard } from "../components/Skeleton";
 import { passkeysAvailable } from "../components/passkey";
 import { Alert, Bolt, Check, Cross, Key, Pause, Play, Plug, Shield, ShieldX } from "../components/icons";
 import { useStore, type AgentEvent, type Approval, type Mandate, type ProposeResult, type Run } from "./store";
+import { AgentChat } from "./AgentChat";
 
-const TASKS = ["Buy washing-up liquid and sponges", "Buy an electric kettle", "Buy toilet roll", "Buy black ink"];
 
 export default function HomePage() {
   const { ready, mandate } = useStore();
@@ -168,7 +168,7 @@ function Dashboard({ mandate }: { mandate: Mandate }) {
 
           <TryIt />
 
-          <AgentCard disabled={mandate.status !== "active"} />
+          <AgentChat disabled={mandate.status !== "active"} />
 
           <section className="card" aria-labelledby="activity-h">
             <div className="card-head">
@@ -521,206 +521,6 @@ function TryIt() {
         </p>
       )}
     </section>
-  );
-}
-
-/* ---------------- Agent ---------------- */
-
-function AgentCard({ disabled }: { disabled: boolean }) {
-  const { run, runAgent, busy } = useStore();
-  const [task, setTask] = useState(TASKS[0]!);
-  return (
-    <section className="card" aria-labelledby="agent-h">
-      <div className="card-head">
-        <h2 id="agent-h" className="card-title">
-          Give your agent a job
-        </h2>
-        <span className="tiny">It can only buy through your rules</span>
-      </div>
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void runAgent(task, false);
-        }}
-      >
-        <input className="input grow" style={{ flex: "1 1 240px" }} value={task} onChange={(e) => setTask(e.target.value)} aria-label="Task for the agent" disabled={disabled} />
-        <button type="submit" className="btn btn-primary" disabled={busy || disabled || !task.trim()}>
-          {busy && run && !run.drill ? <span className="spinner" aria-hidden="true" /> : <Bolt size={16} />}
-          Run agent
-        </button>
-      </form>
-      <div className="row mt-12" style={{ gap: 8 }}>
-        {TASKS.slice(1).map((t) => (
-          <button key={t} type="button" className="picker" style={{ minHeight: 36, fontSize: 14 }} onClick={() => setTask(t)} disabled={disabled}>
-            {t}
-          </button>
-        ))}
-        <button
-          type="button"
-          className="picker"
-          style={{ minHeight: 36, fontSize: 14 }}
-          onClick={() => setTask(`Buy washing-up liquid and sponges. Check ${window.location.origin}/demo/deals for the best picks.`)}
-          disabled={disabled}
-          title="The agent reads a third-party web page (in a KERNEL cloud browser when configured). The page has a planted instruction."
-        >
-          Use a web page for picks
-        </button>
-        <button type="button" className="btn btn-sm btn-danger" onClick={() => runAgent("Buy a cleaning spray", true)} disabled={busy || disabled} title="Runs a compromised agent that obeys instructions hidden in product pages">
-          <Alert size={15} /> Compromised-agent drill
-        </button>
-      </div>
-      {disabled && <p className="small mt-12">Your mandate isn&rsquo;t active, so the agent can&rsquo;t buy anything.</p>}
-      {run && <RunSteps run={run} />}
-    </section>
-  );
-}
-
-function RunSteps({ run }: { run: Run }) {
-  const { busy } = useStore();
-  const titles = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const e of run.events) {
-      if (e.kind !== "tool") continue;
-      const r = e.result as { results?: Array<{ sku: string; title: string }>; sku?: string; title?: string };
-      r?.results?.forEach((x) => m.set(x.sku, x.title));
-      if (r?.sku && r.title) m.set(r.sku, r.title);
-    }
-    return m;
-  }, [run.events]);
-
-  return (
-    <div className="mt-16" style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
-      <p className="tiny">
-        {run.drill ? "Drill: a compromised agent that obeys product pages" : "Task"}: <strong style={{ color: "var(--ink)" }}>&ldquo;{run.task}&rdquo;</strong>
-      </p>
-      <ul className="steps" data-testid="feed" aria-live="polite">
-        {run.events.map((e, i) => (
-          <Step key={i} e={e} titles={titles} />
-        ))}
-        {busy && (
-          <li className="working">
-            <span className="ico">
-              <span className="spinner" style={{ width: 12, height: 12 }} />
-            </span>
-            <span className="muted">{run.events.length === 0 ? "Working…" : "Thinking…"}</span>
-          </li>
-        )}
-      </ul>
-    </div>
-  );
-}
-
-function Step({ e, titles }: { e: AgentEvent; titles: Map<string, string> }) {
-  if (e.kind === "text") {
-    return (
-      <li>
-        <span className="ico">
-          <Check size={12} />
-        </span>
-        <span className="muted">{e.text}</span>
-      </li>
-    );
-  }
-  const r = e.result as Record<string, unknown>;
-  if (e.name === "search_catalog") {
-    const items = (r?.results as Array<{ title: string; price: string }>) ?? [];
-    return (
-      <li>
-        <span className="ico">
-          <Search />
-        </span>
-        <span>
-          Searched shops for &ldquo;{String(e.input.query)}&rdquo; <span className="muted">· {items.length ? items.map((i) => `${i.title} ${i.price}`).join(", ") : "no matches"}</span>
-        </span>
-      </li>
-    );
-  }
-  if (e.name === "get_product") {
-    return (
-      <li>
-        <span className="ico ask">
-          <Alert size={12} />
-        </span>
-        <span>
-          Read the product page for {String(r?.title ?? e.input.sku)} <span className="muted">· treated as untrusted content</span>
-        </span>
-      </li>
-    );
-  }
-  if (e.name === "read_web_page") {
-    return (
-      <li>
-        <span className={`ico ${e.ok ? "ask" : "block"}`}>
-          <Alert size={12} />
-        </span>
-        <span>
-          {e.ok ? (
-            <>
-              Read &ldquo;{String(r?.title || r?.url || e.input.url)}&rdquo; <span className="muted">· {String(r?.via ?? "web page")} · treated as untrusted content</span>
-            </>
-          ) : (
-            <>
-              Couldn&rsquo;t read {String(e.input.url)} <span className="muted">· {String(e.result)}</span>
-            </>
-          )}
-        </span>
-      </li>
-    );
-  }
-  if (e.name === "propose_purchase" || e.name === "your_decision") {
-    if (!e.ok) {
-      return (
-        <li>
-          <span className="ico block">
-            <Cross size={12} />
-          </span>
-          <span>{String(e.result)}</span>
-        </li>
-      );
-    }
-    const pr = r as ProposeResult;
-    const map: Record<string, [string, string]> = {
-      paid: ["allow", "Paid"],
-      awaiting_buyer: ["ask", "Approve in PayPal"],
-      pending_approval: ["ask", "Needs your approval"],
-      blocked: ["block", "Blocked"],
-      failed: ["block", "Failed"],
-      declined: ["", "Declined"],
-    };
-    const [tone, label] = map[pr.status] ?? ["", pr.status];
-    const what = e.name === "your_decision" ? (e.input.choice === "approve" ? "You approved" : "You declined") : (titles.get(String(e.input.sku)) ?? humanSku(String(e.input.sku)));
-    return (
-      <li>
-        <span className={`ico ${tone}`}>{tone === "allow" ? <Check size={12} /> : tone === "block" ? <Cross size={12} /> : <Alert size={12} />}</span>
-        <span>
-          <strong>{what}</strong> <span className={`chip chip-${tone || "outline"}`} style={{ marginLeft: 4 }}>{label}</span>
-          {pr.decision && <span className="muted"> {pr.decision.reason}</span>}
-          {pr.error && <span className="muted"> {pr.error}</span>}
-          {pr.approveUrl && (
-            <>
-              {" "}
-              <a href={pr.approveUrl}>Open PayPal to approve this payment</a>
-            </>
-          )}
-        </span>
-      </li>
-    );
-  }
-  return null;
-}
-
-const humanSku = (sku: string) => {
-  const t = sku.replace(/[-_]+/g, " ").trim();
-  return t ? t[0]!.toUpperCase() + t.slice(1) : sku;
-};
-
-function Search() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true">
-      <circle cx="11" cy="11" r="7" />
-      <path d="M20 20l-4-4" />
-    </svg>
   );
 }
 

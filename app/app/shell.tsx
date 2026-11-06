@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
 import { Box, Chart, Home, Mark, Plug, Receipt } from "../components/icons";
@@ -21,6 +22,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const count = (href: string) => (href === "/app" ? approvals.length : href === "/app/orders" ? problems : 0);
   const current = (href: string) => (href === "/app" ? path === "/app" : path.startsWith(href));
   const live = health && health.provider !== "simulated";
+
+  // Insights' dashboard library is large. Fetch it while the browser is idle so the tab opens fast.
+  useEffect(() => {
+    const warm = () => void import("./insights/Dashboard").catch(() => undefined);
+    if ("requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(warm, { timeout: 4000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = setTimeout(warm, 2500);
+    return () => clearTimeout(id);
+  }, []);
 
   return (
     <>

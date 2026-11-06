@@ -72,7 +72,7 @@ const html = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Mandate turns one sentence into signed spending rules that every AI agent must obey, then pays with PayPal only when the rules say yes.">
 <meta name="generator" content="mandate ${pkg.version} preview">
-<title>Mandate · Let AI shop for you, on your terms</title>
+<title>Mandate · Your AI can shop. It can't cross the line.</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect x='1' y='1' width='26' height='26' rx='8' fill='%231E40AF'/%3E%3Cpath d='M8 14.5l4 4 8-9' stroke='white' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>${css}</style>
 </head>

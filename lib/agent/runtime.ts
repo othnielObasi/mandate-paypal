@@ -40,10 +40,41 @@ export const AGENT_SYSTEM = `You are Mandate's shopping agent. You buy things fo
 - If the user gives a link and read_web_page is available, read it for information (reviews, which brand to pick), then find the items in the catalogue.
 - To buy, call propose_purchase. A policy gate decides whether it is paid, sent to the user for approval, or blocked. Report the gate's decision honestly.
 - Never ask for card numbers, passwords or other secrets.
+- When you call propose_purchase, give a one-sentence reason (why this item: cheapest verified seller, the size asked for…). The user sees it.
+- Earlier turns of the conversation are context only. To buy anything in a follow-up, search again and call propose_purchase; the gate checks every purchase.
 - Keep the final message short: what you bought, what needs approval, what was blocked and why.`;
+
+/** A previous turn of the conversation: the user's words, or the agent's final reply. */
+export type Turn = { role: "user" | "agent"; text: string };
+
+/**
+ * Earlier turns as model messages: alternating, starting with the user and ending with the agent,
+ * so the new task can follow. Only the user's own words ever count as the user's (see AgentSession).
+ */
+export function historyMessages(history: Turn[]): Message[] {
+  const out: Message[] = [];
+  for (const t of history) {
+    const text = t.text.trim();
+    if (!text) continue;
+    const role = t.role === "user" ? "user" : "assistant";
+    const prev = out.at(-1);
+    if (prev && prev.role === role) {
+      // Two in a row (e.g. a turn that failed): merge rather than break the alternation.
+      if (prev.role === "user" && typeof prev.content === "string") prev.content += `\n${text}`;
+      else if (prev.role === "assistant") prev.content.push({ type: "text", text });
+      continue;
+    }
+    out.push(role === "user" ? { role, content: text } : { role, content: [{ type: "text", text }] });
+  }
+  while (out[0]?.role === "assistant") out.shift();
+  if (out.at(-1)?.role === "user") out.push({ role: "assistant", content: [{ type: "text", text: "(No reply.)" }] });
+  return out;
+}
 
 export async function runAgentTask(opts: {
   task: string;
+  /** Earlier turns of this conversation (oldest first). */
+  history?: Turn[];
   mandateId: string;
   llm: LlmClient;
   catalog: Catalog;
@@ -54,14 +85,19 @@ export async function runAgentTask(opts: {
   onEvent?: (e: AgentEvent) => void;
 }): Promise<AgentRun> {
   const maxSteps = opts.maxSteps ?? 8;
-  const session = new AgentSession({ task: opts.task, mandateId: opts.mandateId, catalog: opts.catalog, propose: opts.propose, web: opts.web });
+  const history = opts.history ?? [];
+  // Provenance: the user's words across the conversation count as the user's; the agent's replies never do
+  // (they can repeat text from untrusted pages).
+  const userWords = [...history.filter((t) => t.role === "user").map((t) => t.text), opts.task].join("\n");
+  const earlierReplies = history.filter((t) => t.role === "agent").map((t) => t.text).join(" ");
+  const session = new AgentSession({ task: userWords, earlierReplies, mandateId: opts.mandateId, catalog: opts.catalog, propose: opts.propose, web: opts.web });
   const tools = session.tools();
   const events: AgentEvent[] = [];
   const emit = (e: AgentEvent) => {
     events.push(e);
     opts.onEvent?.(e);
   };
-  const messages: Message[] = [{ role: "user", content: opts.task }];
+  const messages: Message[] = [...historyMessages(history), { role: "user", content: opts.task }];
   let steps = 0;
 
   for (;;) {
