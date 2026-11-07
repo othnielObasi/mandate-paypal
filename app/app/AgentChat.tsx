@@ -69,7 +69,9 @@ export function AgentChat({ disabled }: { disabled: boolean }) {
           <h2 id="agent-h" className="card-title">
             Your agent
           </h2>
-          <p className="tiny">It can only buy within your rules</p>
+          <p className="tiny">
+            It can only buy within your rules · <a href="/how-it-works">How it works</a>
+          </p>
         </div>
         {turns.length > 0 && (
           <button type="button" className="btn btn-sm btn-ghost" onClick={newChat} disabled={busy}>
@@ -289,7 +291,7 @@ function ProductCard({
   result: ProposeResult;
   later?: ProposeResult;
 }) {
-  const { decide, busy, passkeys } = useStore();
+  const { decide, busy, passkeys, wallet, connectWallet } = useStore();
   const [open, setOpen] = useState(false);
   const p = ctx.products[sku];
   const seller = p ? (ctx.merchants[p.merchantId]?.name ?? p.merchantId) : undefined;
@@ -335,9 +337,16 @@ function ProductCard({
           </span>
         )}
         {current.approveUrl && (
-          <a className="btn btn-sm" href={current.approveUrl}>
-            Open PayPal to approve this payment
-          </a>
+          <span className="pcard-actions">
+            <a className="btn btn-sm" href={current.approveUrl}>
+              Open PayPal to approve this payment
+            </a>
+            {wallet?.available && !wallet.connected && (
+              <button type="button" className="linkish small" onClick={connectWallet} disabled={busy}>
+                Connect PayPal to skip this next time
+              </button>
+            )}
+          </span>
         )}
       </div>
 

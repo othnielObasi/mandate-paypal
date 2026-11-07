@@ -39,7 +39,11 @@ CREATE INDEX IF NOT EXISTS orders_capture ON orders (capture_id);
 CREATE INDEX IF NOT EXISTS payments_mandate ON payments (mandate_id, captured_at);
 CREATE INDEX IF NOT EXISTS permits_mandate ON permits (mandate_id) WHERE used_at IS NULL;
 ALTER TABLE permits ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS permits_open ON permits (mandate_id) WHERE closed_at IS NULL
+CREATE INDEX IF NOT EXISTS permits_open ON permits (mandate_id) WHERE closed_at IS NULL;
+CREATE TABLE IF NOT EXISTS wallets (
+  user_id TEXT PRIMARY KEY, data JSONB NOT NULL);
+CREATE TABLE IF NOT EXISTS wallet_setups (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())
 `;
 
 /** Runs the idempotent schema once, then every query waits for it. */

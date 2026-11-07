@@ -82,14 +82,14 @@ describe("API: mandates", () => {
     const res = await createMandate(post("/api/mandates", { text: MANDATE_TEXT }));
     expect(res.status).toBe(201);
     expect(await res.json()).toMatchObject({ status: "active", policy: { maxItemMinor: 2500, budget: { amountMinor: 8000 } } });
-    expect(((await (await listMandates()).json()) as unknown[]).length).toBe(1);
+    expect(((await (await listMandates(new Request("http://localhost:3000/api/mandates"))).json()) as unknown[]).length).toBe(1);
   });
 
   it("previews the parsed rules without saving anything", async () => {
     const res = await previewMandate(post("/api/mandates/preview", { text: MANDATE_TEXT }));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ policy: { maxItemMinor: 2500, budget: { amountMinor: 8000, period: "month" } } });
-    expect(await (await listMandates()).json()).toEqual([]);
+    expect(await (await listMandates(new Request("http://localhost:3000/api/mandates"))).json()).toEqual([]);
     expect((await previewMandate(post("/api/mandates/preview", { text: "" }))).status).toBe(422);
   });
 

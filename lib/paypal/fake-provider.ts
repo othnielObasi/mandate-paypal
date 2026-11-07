@@ -37,6 +37,19 @@ export class FakeProvider implements PaymentProvider, OrderRecords {
     return { paypalOrderId: id, status: "COMPLETED", captureId };
   }
 
+  /** Paid from a saved wallet: completes at once whatever the mode, like a real vaulted payment. */
+  async chargeSaved(order: OrderSpec, meta: { note?: string } = {}): Promise<CreateResult> {
+    this.calls.create += 1;
+    if (this.failNext) {
+      this.failNext = false;
+      throw new PaymentError("Simulated PayPal failure");
+    }
+    const id = `SIM-${randomBytes(5).toString("hex").toUpperCase()}${String(++this.seq).padStart(3, "0")}`;
+    const captureId = `SIMCAP-${randomBytes(6).toString("hex").toUpperCase()}`;
+    this.orders.set(id, { status: "COMPLETED", captureId, note: meta.note ? meta.note.slice(0, 127) : null, currency: order.currency, amountMinor: orderTotalMinor(order) });
+    return { paypalOrderId: id, status: "COMPLETED", captureId };
+  }
+
   async captureOrder(paypalOrderId: string): Promise<CaptureResult> {
     this.calls.capture += 1;
     const o = this.orders.get(paypalOrderId);

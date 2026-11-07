@@ -2,6 +2,7 @@ import { z } from "zod";
 import { PasskeyError } from "@/lib/core/governor";
 import { getContainer } from "@/lib/server/container";
 import { handle, HttpError, json, readBody } from "@/lib/server/http";
+import { ownMandate } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,8 +19,11 @@ const Body = z
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
   const { choice, passkey } = await readBody(req, Body);
+  const c = getContainer();
+  const a = await c.approvals.get(id);
+  if (a) await ownMandate(req, c, a.mandateId);
   try {
-    return json(await getContainer().governor.decide(id, choice, { passkey }));
+    return json(await c.governor.decide(id, choice, { passkey }));
   } catch (e) {
     if (e instanceof PasskeyError) throw new HttpError(403, e.message);
     const msg = e instanceof Error ? e.message : "Cannot decide this approval.";

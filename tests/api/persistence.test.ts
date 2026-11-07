@@ -64,7 +64,7 @@ describe("persistence across a restart (Postgres)", () => {
     // --- restart: a brand-new container (and, for real Postgres, a new pool) on the same database ---
     setContainer(createContainer(env, { sql: second }));
 
-    expect(((await (await listMandates()).json()) as unknown[]).length).toBe(1);
+    expect(((await (await listMandates(new Request("http://localhost:3000/api/mandates"))).json()) as unknown[]).length).toBe(1);
     expect(await (await getMandate(get(`/api/mandates/${m.id}`), params(m.id))).json()).toMatchObject({ spentMinor: 450 });
 
     const approvals = (await (await listApprovals(get(`/api/approvals?mandateId=${m.id}`))).json()) as Array<{ id: string }>;

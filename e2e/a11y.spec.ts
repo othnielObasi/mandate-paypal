@@ -18,6 +18,13 @@ test.describe("accessibility (axe, WCAG 2.1 AA)", () => {
       await scan(page, "landing");
       await page.goto("/developers");
       await scan(page, "developers");
+      await page.goto("/how-it-works");
+      await scan(page, "mandate map");
+      await page.getByRole("button", { name: /Policy gate/ }).click();
+      await page.getByRole("dialog", { name: /7 rules/ }).waitFor();
+      await scan(page, "mandate map popover");
+      await page.getByRole("button", { name: /Sign out/ }).click();
+      await page.getByRole("dialog", { name: "Sign out" }).waitFor();
       await page.goto("/app/setup");
       await page.getByLabel("Your mandate").fill(MANDATE);
       await page.getByRole("button", { name: "Read my rules" }).click();

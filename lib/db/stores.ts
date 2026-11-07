@@ -1,3 +1,4 @@
+import { MemoryWalletStore, type WalletRecord, type WalletStore } from "../paypal/vault";
 import type { Ap2PurchaseRecord } from "../ap2v2/records";
 import { MemoryLedger, type BudgetLedger } from "../core/ledger";
 import { MemoryPasskeyStore, type PasskeyRecord, type PasskeyStore } from "../passkey/store";
@@ -69,6 +70,7 @@ export interface Stores {
   connections: ConnectionStore;
   passkeys: PasskeyStore;
   ledger: BudgetLedger;
+  wallets: WalletStore;
 }
 
 export function memoryStores(): Stores {
@@ -89,6 +91,7 @@ export function memoryStores(): Stores {
     credentials: new MemoryCredentialStore(),
     connections: new MemoryConnectionStore(),
     passkeys: new MemoryPasskeyStore(),
+    wallets: new MemoryWalletStore(),
   };
 }
 
@@ -392,6 +395,27 @@ class PgPasskeys implements PasskeyStore {
   }
 }
 
+class PgWallets implements WalletStore {
+  constructor(private db: PgDb) {}
+  async get(userId: string) {
+    return one(await this.db.q<Doc<WalletRecord>>(`SELECT data FROM wallets WHERE user_id = $1`, [userId]));
+  }
+  async put(r: WalletRecord) {
+    await this.db.q(`INSERT INTO wallets (user_id, data) VALUES ($1, $2::jsonb) ON CONFLICT (user_id) DO UPDATE SET data = EXCLUDED.data`, [r.userId, toJson(r)]);
+  }
+  async remove(userId: string) {
+    return one(await this.db.q<Doc<WalletRecord>>(`DELETE FROM wallets WHERE user_id = $1 RETURNING data`, [userId]));
+  }
+  async putSetup(id: string, userId: string) {
+    await this.db.q(`INSERT INTO wallet_setups (id, user_id) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, [id, userId]);
+  }
+  async takeSetup(id: string) {
+    // One use, and only within an hour of starting.
+    const rows = await this.db.q<{ user_id: string }>(`DELETE FROM wallet_setups WHERE id = $1 AND created_at > now() - interval '1 hour' RETURNING user_id`, [id]);
+    return rows[0]?.user_id;
+  }
+}
+
 export function pgStores(db: PgDb): Stores {
   return {
     mandates: new PgMandates(db),
@@ -407,6 +431,7 @@ export function pgStores(db: PgDb): Stores {
     credentials: new PgCredentials(db),
     connections: new PgConnections(db),
     passkeys: new PgPasskeys(db),
+    wallets: new PgWallets(db),
     ledger: new PgLedger(db),
   };
 }

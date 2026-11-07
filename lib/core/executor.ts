@@ -3,7 +3,7 @@ import { orderDigest, orderTotalMinor, type OrderSpec } from "../gate/canonical"
 import { verifyPermit, type PermitStore } from "../gate/permits";
 import { CURRENCIES, formatMoney } from "../gate/policy";
 import type { ReceiptLog } from "../gate/receipts";
-import type { PaymentProvider, ReturnUrls } from "../paypal/provider";
+import type { CreateResult, PaymentProvider, ReturnUrls } from "../paypal/provider";
 import { ledgerOf, type BudgetLedger } from "./ledger";
 import { MemoryPendingStore, type PendingStore } from "./pending";
 import type { PaymentStore } from "./spend";
@@ -73,6 +73,15 @@ interface Deps {
   pending?: PendingStore;
   /** Records a payment and releases its permit together. Defaults to the two stores. */
   ledger?: BudgetLedger;
+  /** The mandate owner's saved PayPal wallet, if they connected one: paid without a trip to PayPal. */
+  wallet?: SavedWallet;
+}
+
+export interface SavedWallet {
+  readonly name: string;
+  /** The saved payment token for this mandate's owner, or null. */
+  tokenFor(mandateId: string): Promise<string | null>;
+  pay(order: OrderSpec, paymentTokenId: string, meta: { note?: string }): Promise<CreateResult>;
 }
 
 /**
@@ -127,7 +136,9 @@ export class Executor {
     const money = formatMoney(total, order.currency);
     let paypalOrderId: string | null = null;
     try {
-      const created = await this.d.provider.createOrder(order, this.d.urls, { note: meta.note });
+      const saved = this.d.wallet ? await this.d.wallet.tokenFor(order.mandateId) : null;
+      const created = saved ? await this.d.wallet!.pay(order, saved, { note: meta.note }) : await this.d.provider.createOrder(order, this.d.urls, { note: meta.note });
+      const via = saved ? `your saved PayPal (${this.d.wallet!.name})` : this.d.provider.name;
       paypalOrderId = created.paypalOrderId;
       if (created.status === "PAYER_ACTION_REQUIRED") {
         await this.pending.put(created.paypalOrderId, { mandateId: order.mandateId, amountMinor: total, currency: order.currency, order, permitId: permit.id, paymentMandateId: meta.paymentMandateId });
@@ -140,7 +151,7 @@ export class Executor {
         return { status: "awaiting_buyer", paypalOrderId: created.paypalOrderId, approveUrl: created.approveUrl, amountMinor: total };
       }
       const captured = created.status === "COMPLETED" ? created : await this.d.provider.captureOrder(created.paypalOrderId);
-      await this.settle(order.mandateId, total, order.currency, captured.paypalOrderId, captured.captureId, permit.id, order.merchantId);
+      await this.settle(order.mandateId, total, order.currency, captured.paypalOrderId, captured.captureId, permit.id, order.merchantId, via);
       await this.handOff({ paypalOrderId: captured.paypalOrderId, captureId: captured.captureId, order, amountMinor: total, permitId: permit.id, paymentMandateId: meta.paymentMandateId });
       return { status: "paid", paypalOrderId: captured.paypalOrderId, captureId: captured.captureId, amountMinor: total };
     } catch (e) {
@@ -200,6 +211,7 @@ export class Executor {
     captureId: string,
     permitId: string | null,
     merchantId: string | null,
+    via: string = this.d.provider.name,
   ) {
     const capturedAt = this.d.clock().toISOString();
     // Counted as spent and no longer held as reserved, in one step.
@@ -207,8 +219,8 @@ export class Executor {
     await this.d.receipts.append({
       mandateId,
       type: "payment",
-      summary: `Paid ${formatMoney(amountMinor, currency)}${merchantId ? ` to ${merchantId}` : ""} via ${this.d.provider.name}`,
-      payload: { permitId, paypalOrderId, captureId, provider: this.d.provider.name },
+      summary: `Paid ${formatMoney(amountMinor, currency)}${merchantId ? ` to ${merchantId}` : ""} via ${via}`,
+      payload: { permitId, paypalOrderId, captureId, provider: via },
     });
   }
 }

@@ -295,3 +295,28 @@ test("an outside AI assistant connects over MCP and can only buy through the man
   const after = await request.post(url, { data: { jsonrpc: "2.0", id: 1, method: "tools/list" } });
   expect(after.status()).toBe(401);
 });
+
+test("connect PayPal once, then purchases inside the rules are paid from it; sign out ends the workspace", async ({ page }) => {
+  await newMandate(page);
+  const card = page.getByTestId("wallet");
+  await expect(card).toContainText("Not connected");
+  await card.getByRole("button", { name: "Connect PayPal" }).click();
+  await page.waitForURL(/\/app$/);
+  await expect(card).toContainText("PayPal connected");
+  await expect(card).toContainText("buyer@example.com");
+
+  await runAgent(page, "Buy washing-up liquid");
+  await expect(feed(page).getByText("Paid", { exact: true })).toHaveCount(1);
+  await page.goto("/app/receipts");
+  await expect(page.getByText(/via your saved PayPal/).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Your workspace" }).click();
+  await expect(page.getByRole("group", { name: "Your workspace" })).toContainText("buyer@example.com");
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "ends this workspace" })).toBeVisible();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.waitForURL((u) => u.pathname === "/");
+  // A fresh, empty workspace next time.
+  await page.goto("/app");
+  await expect(page.getByRole("link", { name: "Write my mandate" })).toBeVisible();
+});

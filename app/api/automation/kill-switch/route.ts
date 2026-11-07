@@ -2,7 +2,6 @@ import { z } from "zod";
 import { bearerMatches } from "@/lib/automation/zapier";
 import type { MandateStatus } from "@/lib/gate/types";
 import { getContainer } from "@/lib/server/container";
-import { DEMO_USER } from "@/lib/server/demo";
 import { handle, HttpError, json, readBody } from "@/lib/server/http";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +10,7 @@ export const runtime = "nodejs";
 const Body = z
   .object({
     action: z.enum(["pause", "resume", "revoke"]),
-    /** One mandate; omit to act on all of the user's mandates. */
+    /** One mandate; omit to act on every mandate. */
     mandateId: z.string().min(1).max(100).optional(),
   })
   .strict();
@@ -35,7 +34,7 @@ export const POST = handle(async (req: Request) => {
 
   const { action, mandateId } = await readBody(req, Body);
   const { to, from } = TARGET[action];
-  const mandates = mandateId ? [await c.mandates.get(mandateId)].filter((m) => m !== undefined) : await c.mandates.list(DEMO_USER);
+  const mandates = mandateId ? [await c.mandates.get(mandateId)].filter((m) => m !== undefined) : await c.mandates.list();
   if (mandateId && mandates.length === 0) throw new HttpError(404, "Mandate not found.");
 
   const changed: string[] = [];

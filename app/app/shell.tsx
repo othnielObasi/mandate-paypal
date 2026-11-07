@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
 import { Box, Chart, Home, Mark, Plug, Receipt } from "../components/icons";
@@ -13,6 +13,78 @@ const NAV = [
   { href: "/app/receipts", label: "Receipts", icon: Receipt },
   { href: "/app/insights", label: "Insights", icon: Chart },
 ] as const;
+
+/** Your workspace: PayPal connection and sign out. */
+function AccountMenu() {
+  const { wallet, connectWallet, disconnectWallet, signOut, busy } = useStore();
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => !box.current?.contains(e.target as Node) && close();
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && (close(), btn.current?.focus());
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  const close = () => (setOpen(false), setConfirm(false));
+
+  return (
+    <div className="acct" ref={box}>
+      <button ref={btn} type="button" className="avatar" aria-label="Your workspace" aria-expanded={open} aria-controls="acct-menu" onClick={() => (open ? close() : setOpen(true))}>
+        Y
+      </button>
+      {open && (
+        <div id="acct-menu" className="acct-menu" role="group" aria-label="Your workspace">
+          <div className="acct-head">
+            <strong>Your workspace</strong>
+            <span className="small muted">Private to this browser</span>
+          </div>
+          {wallet?.available && (
+            <div className="acct-row">
+              <span className="grow">
+                <span className="acct-label">PayPal</span>
+                <span className="small muted">{wallet.connected ? (wallet.email ?? "Connected") : "Not connected"}</span>
+              </span>
+              {wallet.connected ? (
+                <button type="button" className="btn btn-sm btn-ghost" onClick={disconnectWallet} disabled={busy}>
+                  Disconnect
+                </button>
+              ) : (
+                <button type="button" className="btn btn-sm" onClick={connectWallet} disabled={busy}>
+                  Connect
+                </button>
+              )}
+            </div>
+          )}
+          {confirm ? (
+            <div className="acct-confirm" role="alert">
+              <p className="small">Signing out ends this workspace on this browser. Your agents are paused and PayPal is disconnected. Receipts stay verifiable.</p>
+              <div className="row" style={{ gap: 8 }}>
+                <button type="button" className="btn btn-sm btn-ghost" onClick={() => setConfirm(false)}>
+                  Cancel
+                </button>
+                <button type="button" className="btn btn-sm btn-danger" onClick={signOut} disabled={busy}>
+                  Sign out
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="acct-signout" onClick={() => setConfirm(true)}>
+              Sign out
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
@@ -67,9 +139,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 Seller view
               </NextLink>
             )}
-            <span className="avatar" role="img" aria-label="Signed in as the demo user">
-              D
-            </span>
+            <AccountMenu />
           </div>
         </div>
       </header>

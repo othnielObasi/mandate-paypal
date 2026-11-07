@@ -17,6 +17,8 @@ export type ProposeResult = { status: string; decision?: Decision; approveUrl?: 
 export type AgentEvent = { kind: "text"; text: string } | { kind: "tool"; name: string; input: Record<string, unknown>; ok: boolean; result: unknown };
 export type Approval = { id: string; summary: string; decision: Decision; expiresAt: string; createdAt: string };
 export type Health = { provider: string; model: string; signingKey: string; market: string; storage?: string };
+/** The saved PayPal wallet for this workspace. `available` is false in the shared demo workspace (API, SDK). */
+export type Wallet = { available: boolean; simulated: boolean; connected: boolean; email: string | null; connectedAt: string | null };
 /** One turn of the conversation: what you asked, every step the agent took, and its closing reply. */
 export type Run = { task: string; drill: boolean; events: AgentEvent[]; final?: string };
 
@@ -46,6 +48,12 @@ type Store = {
   /** Passkeys that sign approvals; empty means approvals use the demo key. */
   passkeys: PasskeyView[];
   addPasskey: (label: string) => Promise<void>;
+  wallet: Wallet | null;
+  /** Go to PayPal to save it for this workspace. */
+  connectWallet: () => Promise<void>;
+  disconnectWallet: () => Promise<void>;
+  /** End this browser's workspace and go back to the home page. */
+  signOut: () => Promise<void>;
 };
 
 const Ctx = createContext<Store | null>(null);
@@ -67,6 +75,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [orders, setOrders] = useState<OrderView[]>([]);
   const [passkeys, setPasskeys] = useState<PasskeyView[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [wallet, setWallet] = useState<Wallet | null>(null);
   const [turns, setTurns] = useState<Run[]>([]);
   const turnsRef = useRef<Run[]>([]);
   turnsRef.current = turns;
@@ -91,8 +100,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       idRef.current = id;
       setMandateId(id);
     }
-    const all = await api<Receipt[]>("/api/receipts");
+    const [all, w] = await Promise.all([api<Receipt[]>("/api/receipts"), api<Wallet>("/api/wallet").catch(() => null)]);
     setReceipts(all);
+    setWallet(w);
     if (!mid) return;
     const [b, a, o, k] = await Promise.all([
       api<Budget>(`/api/mandates/${mid}`),
@@ -113,6 +123,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setReady(true));
     const p = new URLSearchParams(window.location.search).get("payment");
+    const w = new URLSearchParams(window.location.search).get("wallet");
+    if (w) toast(w === "connected" ? "PayPal connected. Purchases your rules allow are now paid from it." : w === "cancelled" ? "PayPal not connected. Nothing was saved." : "Couldn't connect PayPal. Please try again.");
+    if (p || w) window.history.replaceState(null, "", window.location.pathname);
     if (p) toast(p === "paid" ? "Payment captured in PayPal." : p === "cancelled" ? "Payment cancelled in PayPal. Nothing was charged." : `PayPal: ${p.replace(/_/g, " ")}`);
   }, [refresh, toast]);
 
@@ -222,6 +235,28 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [act, refresh, toast],
   );
 
+  const connectWallet = useCallback(async () => {
+    await act(async () => {
+      const { approveUrl } = await api<{ approveUrl: string }>("/api/wallet", { method: "POST", body: "{}" });
+      window.location.assign(approveUrl);
+    });
+  }, [act]);
+
+  const disconnectWallet = useCallback(async () => {
+    await act(async () => {
+      await api("/api/wallet", { method: "DELETE" });
+      await refresh();
+      toast("PayPal disconnected. Each purchase needs a PayPal approval again.");
+    });
+  }, [act, refresh, toast]);
+
+  const signOut = useCallback(async () => {
+    await act(async () => {
+      await api("/api/session", { method: "DELETE" });
+      window.location.assign("/");
+    });
+  }, [act]);
+
   const mandate = budget?.mandate && budget.mandate.id === mandateId ? budget.mandate : null;
   const mine = useMemo(() => (mandateId ? receipts.filter((r) => r.mandateId === mandateId) : []), [receipts, mandateId]);
   const activity = useMemo(() => toActivity(mine), [mine]);
@@ -246,6 +281,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     toast,
     passkeys,
     addPasskey,
+    wallet,
+    connectWallet,
+    disconnectWallet,
+    signOut,
     runAgent,
     decide,
   };

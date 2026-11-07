@@ -3,6 +3,7 @@ import { checkClientData, clientOrigin, registrationChallenge, spkiToJwk } from 
 import { passkeyOwner } from "@/lib/passkey/store";
 import { getContainer } from "@/lib/server/container";
 import { handle, HttpError, json, readBody } from "@/lib/server/http";
+import { ownMandate } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -25,8 +26,8 @@ const view = (k: { credentialId: string; label: string; createdAt: string; rpId:
 export const GET = handle(async (req: Request) => {
   const mandateId = new URL(req.url).searchParams.get("mandateId");
   const c = getContainer();
-  const m = mandateId ? await c.mandates.get(mandateId) : undefined;
-  if (!m) throw new HttpError(404, "Mandate not found.");
+  if (!mandateId) throw new HttpError(404, "Mandate not found.");
+  const m = await ownMandate(req, c, mandateId);
   return json({ challenge: registrationChallenge(m.id), passkeys: (await c.stores.passkeys.listForUser(passkeyOwner(m))).map(view) });
 });
 
@@ -34,8 +35,7 @@ export const GET = handle(async (req: Request) => {
 export const POST = handle(async (req: Request) => {
   const b = await readBody(req, Body);
   const c = getContainer();
-  const m = await c.mandates.get(b.mandateId);
-  if (!m) throw new HttpError(404, "Mandate not found.");
+  const m = await ownMandate(req, c, b.mandateId);
   const bad = checkClientData(b.clientDataJSON, { type: "webauthn.create", challenge: registrationChallenge(m.id), origin: c.mcp.allowedOrigins });
   if (bad) throw new HttpError(400, `Passkey registration failed: ${bad}.`);
   let publicKey;

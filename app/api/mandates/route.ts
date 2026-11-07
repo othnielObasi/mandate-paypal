@@ -2,7 +2,7 @@ import { z } from "zod";
 import { parseMandate } from "@/lib/agent/mandate-parser";
 import { parsePolicy, type Policy } from "@/lib/gate/policy";
 import { getContainer } from "@/lib/server/container";
-import { DEMO_USER } from "@/lib/server/demo";
+import { currentUser } from "@/lib/server/session";
 import { handle, HttpError, json, readBody } from "@/lib/server/http";
 import { enforceLimit } from "@/lib/server/limits";
 
@@ -30,10 +30,10 @@ export const POST = handle(async (req: Request) => {
     if (!parsed.ok) throw new HttpError(422, parsed.error);
     policy = parsed.policy;
   }
-  const mandate = await c.governor.createMandate({ userId: DEMO_USER, policy, rawText: text.trim() });
+  const mandate = await c.governor.createMandate({ userId: currentUser(req), policy, rawText: text.trim() });
   return json(mandate, 201);
 });
 
-export const GET = handle(async () => {
-  return json(await getContainer().mandates.list(DEMO_USER));
+export const GET = handle(async (req: Request) => {
+  return json(await getContainer().mandates.list(currentUser(req)));
 });

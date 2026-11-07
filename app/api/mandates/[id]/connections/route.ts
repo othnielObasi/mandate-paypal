@@ -2,6 +2,7 @@ import { z } from "zod";
 import { newConnection } from "@/lib/mcp/connections";
 import { getContainer } from "@/lib/server/container";
 import { handle, HttpError, json, readBody } from "@/lib/server/http";
+import { ownMandate } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -13,8 +14,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   const { id } = await ctx.params;
   const { label } = await readBody(req, Body);
   const c = getContainer();
-  const m = await c.mandates.get(id);
-  if (!m) throw new HttpError(404, "Mandate not found.");
+  const m = await ownMandate(req, c, id);
   if (m.status === "revoked") throw new HttpError(409, "This mandate is revoked.");
   const { record, token } = newConnection(id, label, new Date());
   await c.stores.connections.put(record);
@@ -22,8 +22,10 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   return json({ id: record.id, label, createdAt: record.createdAt, token, url: `${c.appUrl}/api/mcp/${token}` }, 201);
 });
 
-export const GET = handle(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {
+export const GET = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
-  const rows = await getContainer().stores.connections.list(id);
+  const c = getContainer();
+  await ownMandate(req, c, id);
+  const rows = await c.stores.connections.list(id);
   return json(rows.map((r) => ({ id: r.id, label: r.label, createdAt: r.createdAt, revoked: r.revokedAt !== null })));
 });

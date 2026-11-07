@@ -26,6 +26,8 @@ import { SimulatedDisputes, ToolkitDisputes, ToolkitTracking } from "../paypal/t
 import { FakeProvider } from "../paypal/fake-provider";
 import type { PaymentProvider } from "../paypal/provider";
 import { ToolkitProvider, type ToolkitTools } from "../paypal/toolkit-provider";
+import { RestVault, SimulatedVault, type Vault } from "../paypal/vault";
+import { DEMO_USER } from "./demo";
 import { ServerSdkOrderRecords, type OrderRecords } from "../paypal/order-records";
 import { PayPalAuth, PayPalWebhookVerifier } from "../paypal/webhook-verifier";
 import { ZapierHook } from "../automation/zapier";
@@ -69,11 +71,13 @@ export interface Container {
   web: WebReader;
   /** PayPal's own order records, for the seller check (Server SDK, or the simulator). */
   orderRecords: OrderRecords;
+  /** Saves a buyer's PayPal wallet (PayPal Vault), so purchases inside the rules need no trip to PayPal. */
+  vault: Vault;
   /** Zapier: alerts out (ZAPIER_HOOK_URL), kill switch in (AUTOMATION_SECRET). */
   automation: { alerts: ZapierHook | null; killSwitchSecret: string | null };
 }
 
-function makePayPal(env: Env): { provider: PaymentProvider; tracking: TrackingChannel | null; disputes: DisputeChannel; orderRecords: OrderRecords } {
+function makePayPal(env: Env): { provider: PaymentProvider; tracking: TrackingChannel | null; disputes: DisputeChannel; orderRecords: OrderRecords; vault: Vault } {
   if (env.PAYPAL_CLIENT_ID && env.PAYPAL_CLIENT_SECRET) {
     if ((env.PAYPAL_ENVIRONMENT ?? "SANDBOX").toUpperCase() !== "SANDBOX")
       throw new Error("Mandate runs against the PayPal sandbox only. Set PAYPAL_ENVIRONMENT=SANDBOX.");
@@ -96,10 +100,11 @@ function makePayPal(env: Env): { provider: PaymentProvider; tracking: TrackingCh
       disputes: new ToolkitDisputes(tools),
       // The seller check reads PayPal's own order record through the Server SDK (read-only).
       orderRecords: ServerSdkOrderRecords.sandbox({ clientId: env.PAYPAL_CLIENT_ID, clientSecret: env.PAYPAL_CLIENT_SECRET }),
+      vault: new RestVault({ auth: new PayPalAuth({ clientId: env.PAYPAL_CLIENT_ID, clientSecret: env.PAYPAL_CLIENT_SECRET }) }),
     };
   }
   const fake = new FakeProvider(env.MANDATE_SIMULATED_MODE === "payer_action" ? "payer_action" : "auto_complete");
-  return { provider: fake, tracking: null, disputes: new SimulatedDisputes(), orderRecords: fake };
+  return { provider: fake, tracking: null, disputes: new SimulatedDisputes(), orderRecords: fake, vault: new SimulatedVault(fake) };
 }
 
 function makeSql(env: Env, given?: Sql): Sql | null {
@@ -145,7 +150,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
   if (sql && !env.MANDATE_SIGNING_KEY)
     throw new Error("With a database, set MANDATE_SIGNING_KEY so receipts stay verifiable across restarts (see .env.example).");
   const signer = env.MANDATE_SIGNING_KEY ? signerFromPem(env.MANDATE_SIGNING_KEY.replace(/\\n/g, "\n")) : generateSigner();
-  const { provider, tracking, disputes, orderRecords } = makePayPal(env);
+  const { provider, tracking, disputes, orderRecords, vault } = makePayPal(env);
   const clock = () => new Date();
 
   const stores = sql ? pgStores(new PgDb(sql)) : memoryStores();
@@ -192,6 +197,16 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     },
     pending: stores.pending,
     ledger: stores.ledger,
+    wallet: {
+      name: vault.name,
+      // Only a private workspace can save a wallet; the shared demo user never has one.
+      tokenFor: async (mandateId) => {
+        const m = await mandates.get(mandateId);
+        if (!m || m.userId === DEMO_USER) return null;
+        return (await stores.wallets.get(m.userId))?.paymentTokenId ?? null;
+      },
+      pay: (order, token, meta) => vault.pay(order, token, meta),
+    },
   });
   const catalog = new Catalog(DEMO_CATALOG);
   const credentials = new Credentials(signer);
@@ -267,6 +282,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     signingKey: env.MANDATE_SIGNING_KEY ? "configured" : "ephemeral",
     appUrl,
     automation: { alerts, killSwitchSecret },
+    vault,
     orderRecords,
     web,
   };

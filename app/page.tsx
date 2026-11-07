@@ -1,6 +1,7 @@
 import NextLink from "next/link";
 import { Alert, Arrow, Chart, Check, Doc, Github, Key, Lock, Mark, Plug, Receipt, Shield, ShieldX, Store, Truck } from "./components/icons";
 import { GateTrace } from "./components/GateTrace";
+import { AssistantOrbit } from "./components/AssistantOrbit";
 
 const REPO = "https://github.com/othnielObasi/mandate-paypal";
 
@@ -12,8 +13,6 @@ const FAQ: Array<[string, string]> = [
   ["Which assistants can use it?", "Anything that speaks the Model Context Protocol: Claude, Claude Code, ChatGPT, Cursor or your own agent. Each gets a private link you can revoke at any time."],
   ["What happens when a purchase goes over a limit?", "Your phone shows what, why and what you'd have left. Approving signs that exact cart. Hard rules, such as unverified sellers or the wrong category, can't be approved past."],
 ];
-
-const CLIENTS = ["Claude", "ChatGPT", "Cursor", "Claude Code", "VS Code", "Windsurf", "Zed", "Your agent"];
 
 export default function Landing() {
   return (
@@ -32,6 +31,7 @@ export default function Landing() {
             <a href="#safety">Safety</a>
             <a href="#sellers">For sellers</a>
             <a href="#assistants">Any assistant</a>
+            <NextLink href="/how-it-works">Mandate Map</NextLink>
             <NextLink href="/developers">Developers</NextLink>
           </nav>
           <div className="lp-nav-end">
@@ -51,6 +51,7 @@ export default function Landing() {
                 <a href="#safety">Safety</a>
                 <a href="#sellers">For sellers</a>
                 <a href="#assistants">Any assistant</a>
+                <NextLink href="/how-it-works">Mandate Map</NextLink>
                 <NextLink href="/developers">Developers</NextLink>
                 <a href={REPO} target="_blank" rel="noopener noreferrer">
                   GitHub
@@ -99,7 +100,7 @@ export default function Landing() {
             </div>
           </div>
           <div className="lp-wrap">
-            <div className="frame">
+            <div className="frame board-bg">
               <i className="frame-c tl" />
               <i className="frame-c tr" />
               <i className="frame-c bl" />
@@ -215,6 +216,9 @@ export default function Landing() {
             <div className="center-cta">
               <NextLink className="btn" href="/app/setup">
                 Write your first mandate
+              </NextLink>
+              <NextLink className="btn btn-ghost" href="/how-it-works">
+                See the Mandate Map
               </NextLink>
             </div>
           </div>
@@ -411,21 +415,7 @@ export default function Landing() {
         {/* ---------- Assistants: tile grid, centred, stats ---------- */}
         <section id="assistants" className="lp-band lp-band-soft" aria-labelledby="as-h">
           <div className="lp-wrap">
-            <div className="tiles" aria-hidden="true">
-              {CLIENTS.slice(0, 4).map((n) => (
-                <span key={n} className="tile">
-                  {n}
-                </span>
-              ))}
-              <span className="tile tile-hub">
-                <Mark size={30} />
-              </span>
-              {CLIENTS.slice(4).map((n) => (
-                <span key={n} className="tile">
-                  {n}
-                </span>
-              ))}
-            </div>
+            <AssistantOrbit />
             <div className="center-head">
               <p className="kicker">Any assistant</p>
               <h2 id="as-h">Use the AI you already have. It still plays by your rules.</h2>
@@ -577,7 +567,7 @@ export default function Landing() {
         {/* ---------- Closing call to action ---------- */}
         <section className="lp-cta">
           <div className="lp-wrap">
-            <div className="cta-box">
+            <div className="cta-box board-bg">
               <div className="deco deco-l" aria-hidden="true">
                 <span className="deco-grid" />
               </div>
@@ -612,6 +602,7 @@ export default function Landing() {
           <nav aria-label="Product">
             <strong>Product</strong>
             <NextLink href="/app">App</NextLink>
+            <NextLink href="/how-it-works">Mandate Map</NextLink>
             <NextLink href="/seller">Seller check</NextLink>
             <NextLink href="/app/insights">Insights</NextLink>
           </nav>

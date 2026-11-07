@@ -263,6 +263,7 @@ function Dashboard({ mandate }: { mandate: Mandate }) {
                 </button>
               ))}
           </section>
+          <WalletCard />
           <PasskeyCard />
           <WhoCanShop />
         </aside>
@@ -350,6 +351,39 @@ function BudgetCard({ compact = false }: { compact?: boolean }) {
       <p className="small" data-testid="budget">
         {usd(budget.spentMinor)} spent · {usd(budget.reservedMinor)} held · {usd(budget.remainingMinor)} left this {p.budget.period}
       </p>
+    </section>
+  );
+}
+
+function WalletCard() {
+  const { wallet, connectWallet, disconnectWallet, busy } = useStore();
+  if (!wallet?.available) return null;
+  return (
+    <section className="card" aria-labelledby="pp-h" data-testid="wallet">
+      <div className="row between" style={{ marginBottom: 8 }}>
+        <h2 id="pp-h" className="section-label">
+          Payments
+        </h2>
+        <span className={`chip ${wallet.connected ? "chip-allow" : "chip-outline"}`}>{wallet.connected ? "PayPal connected" : "Not connected"}</span>
+      </div>
+      {wallet.connected ? (
+        <>
+          <p className="small">
+            Purchases your rules allow are paid from {wallet.email ? <strong>{wallet.email}</strong> : "your PayPal"} straight away. Ones that need your OK are paid when you approve. Nothing outside your rules can be.
+          </p>
+          <button className="btn btn-sm btn-ghost mt-12" onClick={disconnectWallet} disabled={busy}>
+            Disconnect PayPal
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="small">Connect PayPal once. After that, purchases your rules allow are paid without a trip to PayPal each time.</p>
+          <button className="btn btn-sm btn-primary mt-12" onClick={connectWallet} disabled={busy}>
+            Connect PayPal
+          </button>
+          {wallet.simulated && <p className="small muted mt-8">Demo payments: PayPal is simulated here.</p>}
+        </>
+      )}
     </section>
   );
 }
