@@ -10,6 +10,8 @@ import { UI, mandateStudioTheme } from "./studio-theme";
 const LICENSE = process.env.NEXT_PUBLIC_AG_STUDIO_LICENSE_KEY || undefined;
 
 const title = (text: string) => ({ title: { enabled: true, text, typography: { fontSize: 15, fontWeight: "bold" as const } } });
+/** A chart title with its legend always shown (so "Paid" and "Waiting for PayPal" are labelled even when only one appears). */
+const withLegend = (text: string) => ({ ...title(text), style: { theme: { common: { legend: { enabled: true, position: "bottom" as const } } } } });
 const kpi = (text: string) => ({ ...title(text), style: { typography: { fontSize: 30, fontWeight: "bold" as const }, textScaling: { enabled: false } } });
 
 /** The dashboard, defined as an AG Studio report: KPIs, outcome and rule breakdowns, spend, and the decision log. */
@@ -27,8 +29,9 @@ export const REPORT: AgReportState = {
         widgetPadding: 12,
       },
       widgets: {
-        paid: { type: "value", dataMapping: { value: [{ id: "payments.amount", aggregation: "sum" }] }, format: kpi("Paid through PayPal ($)") },
-        payments: { type: "value", dataMapping: { value: [{ id: "payments.n", aggregation: "sum" }] }, format: kpi("Payments") },
+        paid: { type: "value", dataMapping: { value: [{ id: "payments.paid", aggregation: "sum" }] }, format: kpi("Paid through PayPal ($)") },
+        waiting: { type: "value", dataMapping: { value: [{ id: "payments.waiting", aggregation: "sum" }] }, format: kpi("Waiting for PayPal ($)") },
+        payments: { type: "value", dataMapping: { value: [{ id: "payments.paidN", aggregation: "sum" }] }, format: kpi("Payments") },
         decisions: { type: "value", dataMapping: { value: [{ id: "decisions.n", aggregation: "sum" }] }, format: kpi("Gate decisions") },
         outcomes: {
           type: "donut-chart",
@@ -45,14 +48,14 @@ export const REPORT: AgReportState = {
           format: title("Which rule decided"),
         },
         daily: {
-          type: "column-chart-grouped",
-          dataMapping: { categoryKey: [{ id: "payments.day" }], valueKey: [{ id: "payments.amount", aggregation: "sum" }] },
-          format: title("Spend per day ($)"),
+          type: "column-chart-stacked",
+          dataMapping: { categoryKey: [{ id: "payments.day" }], valueKey: [{ id: "payments.amount", aggregation: "sum" }], legendKey: [{ id: "payments.status" }] },
+          format: withLegend("Spend per day ($)"),
         },
         merchants: {
-          type: "bar-chart-grouped",
-          dataMapping: { categoryKey: [{ id: "payments.merchant" }], valueKey: [{ id: "payments.amount", aggregation: "sum" }] },
-          format: title("Spend by merchant ($)"),
+          type: "bar-chart-stacked",
+          dataMapping: { categoryKey: [{ id: "payments.merchant" }], valueKey: [{ id: "payments.amount", aggregation: "sum" }], legendKey: [{ id: "payments.status" }] },
+          format: withLegend("Spend by merchant ($)"),
         },
         log: {
           type: "grid",
@@ -72,9 +75,10 @@ export const REPORT: AgReportState = {
         },
       },
       widgetLayout: {
-        paid: { xTrack: 0, yTrack: 0, xSpan: 8, ySpan: 6 },
-        payments: { xTrack: 8, yTrack: 0, xSpan: 8, ySpan: 6 },
-        decisions: { xTrack: 16, yTrack: 0, xSpan: 8, ySpan: 6 },
+        paid: { xTrack: 0, yTrack: 0, xSpan: 6, ySpan: 6 },
+        waiting: { xTrack: 6, yTrack: 0, xSpan: 6, ySpan: 6 },
+        payments: { xTrack: 12, yTrack: 0, xSpan: 6, ySpan: 6 },
+        decisions: { xTrack: 18, yTrack: 0, xSpan: 6, ySpan: 6 },
         outcomes: { xTrack: 0, yTrack: 6, xSpan: 9, ySpan: 14 },
         rules: { xTrack: 9, yTrack: 6, xSpan: 15, ySpan: 14 },
         daily: { xTrack: 0, yTrack: 20, xSpan: 12, ySpan: 14 },
@@ -115,6 +119,10 @@ export const FIELDS: Record<"decisions" | "payments", AgFieldDefinition[]> = {
     num("amount", "Amount ($)"),
     text("merchant", "Merchant"),
     text("paypalOrderId", "PayPal order"),
+    text("status", "Status"),
+    num("paid", "Paid ($)"),
+    num("paidN", "Paid count", "integerFormat"),
+    num("waiting", "Waiting for PayPal ($)"),
   ],
 };
 

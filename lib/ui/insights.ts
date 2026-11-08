@@ -29,6 +29,13 @@ export interface PaymentRow {
   amount: number;
   merchant: string;
   paypalOrderId: string;
+  /** Captured, or created in PayPal and waiting for the buyer to approve it. */
+  status: "Paid" | "Waiting for PayPal";
+  /** Amount and count if captured, else 0: summed for the "paid" figures. */
+  paid: number;
+  paidN: 0 | 1;
+  /** Amount if waiting, else 0. */
+  waiting: number;
 }
 
 export interface Insights {
@@ -84,16 +91,32 @@ export function decisionRow(r: Receipt): DecisionRow | null {
   };
 }
 
-export function buildInsights(receipts: Receipt[], payments: Array<{ amountMinor: number; capturedAt: string; paypalOrderId: string; merchant?: string }>): Insights {
+export function buildInsights(
+  receipts: Receipt[],
+  payments: Array<{ amountMinor: number; capturedAt: string; paypalOrderId: string; merchant?: string }>,
+  waiting: Array<{ amountMinor: number; paypalOrderId: string; merchant?: string }> = [],
+): Insights {
+  // When each waiting order was created: its "payment_pending" receipt.
+  const createdAt = new Map<string, string>();
+  for (const r of receipts) {
+    const id = obj(r.payload).paypalOrderId;
+    if (r.type === "payment_pending" && typeof id === "string") createdAt.set(id, r.createdAt);
+  }
+  const paidIds = new Set(payments.map((p) => p.paypalOrderId));
   return {
     decisions: receipts.map(decisionRow).filter((r): r is DecisionRow => r !== null),
-    payments: payments.map((p) => ({
-      n: 1 as const,
-      at: p.capturedAt,
-      day: p.capturedAt.slice(0, 10),
-      amount: dollars(p.amountMinor),
-      merchant: p.merchant ?? "unknown",
-      paypalOrderId: p.paypalOrderId,
-    })),
+    payments: [
+      ...payments.map((p) => {
+        const amount = dollars(p.amountMinor);
+        return { n: 1 as const, at: p.capturedAt, day: p.capturedAt.slice(0, 10), amount, merchant: p.merchant ?? "unknown", paypalOrderId: p.paypalOrderId, status: "Paid" as const, paid: amount, paidN: 1 as const, waiting: 0 };
+      }),
+      ...waiting
+        .filter((w) => !paidIds.has(w.paypalOrderId))
+        .map((w) => {
+          const at = createdAt.get(w.paypalOrderId) ?? new Date().toISOString();
+          const amount = dollars(w.amountMinor);
+          return { n: 1 as const, at, day: at.slice(0, 10), amount, merchant: w.merchant ?? "unknown", paypalOrderId: w.paypalOrderId, status: "Waiting for PayPal" as const, paid: 0, paidN: 0 as const, waiting: amount };
+        }),
+    ],
   };
 }

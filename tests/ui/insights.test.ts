@@ -59,8 +59,18 @@ describe("Insights rows", () => {
 
   it("payments become dollars by day and merchant", () => {
     expect(buildInsights([], [{ amountMinor: 450, capturedAt: "2026-11-05T09:00:00Z", paypalOrderId: "X", merchant: "Acme Supplies" }]).payments).toEqual([
-      { n: 1, at: "2026-11-05T09:00:00Z", day: "2026-11-05", amount: 4.5, merchant: "Acme Supplies", paypalOrderId: "X" },
+      { n: 1, at: "2026-11-05T09:00:00Z", day: "2026-11-05", amount: 4.5, merchant: "Acme Supplies", paypalOrderId: "X", status: "Paid", paid: 4.5, paidN: 1, waiting: 0 },
     ]);
+  });
+
+  it("money waiting for the buyer in PayPal shows up too, marked as waiting, on the day it was created", () => {
+    const pending = { seq: 9, type: "payment_pending", mandateId: "m", createdAt: "2026-11-06T10:00:00Z", summary: "Awaiting buyer approval", payload: { permitId: "p", paypalOrderId: "W" } } as unknown as Receipt;
+    const rows = buildInsights([pending], [{ amountMinor: 450, capturedAt: "2026-11-05T09:00:00Z", paypalOrderId: "X" }], [
+      { amountMinor: 199, paypalOrderId: "W", merchant: "Acme Supplies" },
+      { amountMinor: 450, paypalOrderId: "X" }, // already captured: counted once, as paid
+    ]).payments;
+    expect(rows).toHaveLength(2);
+    expect(rows[1]).toEqual({ n: 1, at: "2026-11-06T10:00:00Z", day: "2026-11-06", amount: 1.99, merchant: "Acme Supplies", paypalOrderId: "W", status: "Waiting for PayPal", paid: 0, paidN: 0, waiting: 1.99 });
   });
 });
 

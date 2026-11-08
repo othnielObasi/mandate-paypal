@@ -16,6 +16,8 @@ export interface PendingStore {
   /** Atomically remove and return. Only the first caller gets it. */
   claim(paypalOrderId: string): Promise<PendingPayment | null>;
   sumFor(mandateId: string): Promise<number>;
+  /** Orders still waiting for the buyer, optionally for one mandate. */
+  list(mandateId?: string): Promise<Array<PendingPayment & { paypalOrderId: string }>>;
 }
 
 export class MemoryPendingStore implements PendingStore {
@@ -33,6 +35,9 @@ export class MemoryPendingStore implements PendingStore {
     let s = 0;
     for (const p of this.rows.values()) if (p.mandateId === mandateId) s += p.amountMinor;
     return s;
+  }
+  async list(mandateId?: string) {
+    return [...this.rows].filter(([, p]) => !mandateId || p.mandateId === mandateId).map(([paypalOrderId, p]) => ({ ...structuredClone(p), paypalOrderId }));
   }
 }
 

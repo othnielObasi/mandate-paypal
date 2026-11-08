@@ -252,6 +252,12 @@ class PgPending implements PendingStore {
     const rows = await this.db.q<{ s: string | number | null }>(`SELECT COALESCE(SUM(amount_minor), 0) AS s FROM pending_orders WHERE mandate_id = $1`, [mandateId]);
     return Number(rows[0]?.s ?? 0);
   }
+  async list(mandateId?: string) {
+    const rows = mandateId
+      ? await this.db.q<{ paypal_order_id: string; data: PendingPayment }>(`SELECT paypal_order_id, data FROM pending_orders WHERE mandate_id = $1`, [mandateId])
+      : await this.db.q<{ paypal_order_id: string; data: PendingPayment }>(`SELECT paypal_order_id, data FROM pending_orders`);
+    return rows.map((r) => ({ ...r.data, paypalOrderId: r.paypal_order_id }));
+  }
 }
 
 class PgOrders implements OrderStore {

@@ -9,12 +9,13 @@ export const runtime = "nodejs";
 export const GET = handle(async (req: Request) => {
   const mandateId = new URL(req.url).searchParams.get("mandateId") ?? undefined;
   const c = getContainer();
-  const [receipts, payments] = await Promise.all([c.receipts.list(mandateId), c.payments.list(mandateId)]);
+  const [receipts, payments, waiting] = await Promise.all([c.receipts.list(mandateId), c.payments.list(mandateId), c.stores.pending.list(mandateId)]);
+  const names = c.merchants.directory();
   const withMerchants = await Promise.all(
     payments.map(async (p) => ({ ...p, merchant: (await c.stores.credentials.getByOrder(p.paypalOrderId))?.cart.contents.merchant_name })),
   );
-  const names = c.merchants.directory();
-  const out = buildInsights(receipts, withMerchants);
+  const waitingRows = waiting.map((w) => ({ amountMinor: w.amountMinor, paypalOrderId: w.paypalOrderId, merchant: names[w.order.merchantId]?.name ?? w.order.merchantId }));
+  const out = buildInsights(receipts, withMerchants, waitingRows);
   for (const d of out.decisions) d.merchant = names[d.merchant]?.name ?? d.merchant;
   return json(out);
 });
