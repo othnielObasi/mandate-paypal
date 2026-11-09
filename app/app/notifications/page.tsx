@@ -21,7 +21,7 @@ const text = (e: AutomationEvent) => e.message.replace(/^Mandate:\s*/, "").repla
 
 function action(e: AutomationEvent): { href: string; label: string; external?: boolean } {
   if (e.event === "approval.needed") return { href: "/app", label: "Review" };
-  if (e.event === "purchase.paid" && e.paypalOrderId) return { href: `/api/verify/${encodeURIComponent(e.paypalOrderId)}`, label: "Check payment", external: true };
+  if (e.event === "purchase.paid" && e.paypalOrderId) return { href: `/seller?order=${encodeURIComponent(e.paypalOrderId)}`, label: "Check payment" };
   if (e.event === "purchase.paid") return { href: "/app/orders", label: "Orders" };
   return { href: "/app", label: "Open" };
 }

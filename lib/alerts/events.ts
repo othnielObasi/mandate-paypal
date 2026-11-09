@@ -39,7 +39,8 @@ export function eventFor(r: Receipt, appUrl: string): AutomationEvent | null {
     }
     case "payment": {
       const id = str(p.paypalOrderId);
-      return { ...base, event: "purchase.paid", message: `Mandate: ${r.summary}`, link: id ? `${appUrl}/api/verify/${encodeURIComponent(id)}` : app, paypalOrderId: id };
+      // The readable seller check for this payment (the raw verdict is /api/verify/<id>, for programs).
+      return { ...base, event: "purchase.paid", message: `Mandate: ${r.summary}`, link: id ? `${appUrl}/seller?order=${encodeURIComponent(id)}` : app, paypalOrderId: id };
     }
     case "payment_failed":
       return { ...base, event: "payment.failed", message: `Mandate: ${r.summary}`, link: app, paypalOrderId: str(p.paypalOrderId) };

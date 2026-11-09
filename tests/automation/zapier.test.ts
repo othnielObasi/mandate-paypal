@@ -53,7 +53,7 @@ describe("Zapier events from the decision log", () => {
 
   it("a payment links to its public verdict", () => {
     const e = eventFor(receipt({ type: "payment", summary: "Paid $4.50 to acme-supplies", payload: { paypalOrderId: "5O19/0" } }), BASE);
-    expect(e).toMatchObject({ event: "purchase.paid", paypalOrderId: "5O19/0", link: `${BASE}/api/verify/5O19%2F0` });
+    expect(e).toMatchObject({ event: "purchase.paid", paypalOrderId: "5O19/0", link: `${BASE}/seller?order=5O19%2F0` });
   });
 
   it("status changes are sent; creating a mandate, permits and tracking are not", () => {
