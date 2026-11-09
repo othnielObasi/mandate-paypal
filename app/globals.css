@@ -953,3 +953,27 @@ button.act:hover { background: var(--surface-2); }
 .art-photo { background: #fff; overflow: hidden; }
 .art-photo img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .pcard-live { display: inline-block; margin-top: 4px; font-size: 11.5px; font-weight: 500; color: var(--accent); background: var(--accent-tint); border-radius: 999px; padding: 1px 8px; }
+
+/* Notifications: the list, the channels card, and the bell in the app bar. */
+.notif-list { list-style: none; margin: 0; padding: 0; }
+.notif { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px 0; border-top: 1px solid var(--hair); }
+.notif:first-child { border-top: 0; }
+.notif-ic { width: 32px; height: 32px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; }
+.notif-ask .notif-ic { background: var(--ask-bg); color: var(--ask); }
+.notif-block .notif-ic { background: var(--block-bg); color: var(--block); }
+.notif-allow .notif-ic { background: var(--allow-bg); color: var(--allow); }
+.notif-plain .notif-ic { background: var(--bg-sunk); color: var(--muted); }
+.notif-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.notif-title { font-weight: 600; font-size: 14px; }
+.notif-text { font-size: 13.5px; color: var(--ink-2); overflow-wrap: anywhere; }
+.notif-time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.chan { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid var(--hair); }
+.chan-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.chan .btn { align-self: flex-start; }
+.chan-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.chan-input { min-height: 36px; font-size: 13px; }
+.chan-hint { grid-column: 1 / -1; }
+.mono-sm { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; overflow-wrap: anywhere; }
+.bell { position: relative; width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-2); }
+.bell:hover, .bell:focus-visible, .bell[aria-current="page"] { background: var(--bg-sunk); color: var(--ink); }
+.bell .count { position: absolute; top: -3px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--block); color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }

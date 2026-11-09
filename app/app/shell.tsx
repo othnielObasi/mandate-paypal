@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
-import { Box, Chart, Home, Mark, Plug, Receipt } from "../components/icons";
+import { Bell, Box, Chart, Home, Mark, Plug, Receipt } from "../components/icons";
+import { useNotifications } from "./notifications/useNotifications";
 import { useStore } from "./store";
 
 const NAV = [
@@ -13,6 +14,17 @@ const NAV = [
   { href: "/app/receipts", label: "Receipts", icon: Receipt },
   { href: "/app/insights", label: "Insights", icon: Chart },
 ] as const;
+
+/** Bell with the number of new notifications since you last looked. */
+function NotificationBell({ current }: { current: boolean }) {
+  const { unread } = useNotifications();
+  return (
+    <NextLink href="/app/notifications" className="bell" aria-current={current ? "page" : undefined} aria-label={unread ? `Notifications, ${unread} new` : "Notifications"}>
+      <Bell size={20} />
+      {unread > 0 && <span className="count" aria-hidden="true">{unread > 9 ? "9+" : unread}</span>}
+    </NextLink>
+  );
+}
 
 /** Your workspace: PayPal connection and sign out. */
 function AccountMenu() {
@@ -139,6 +151,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 Seller view
               </NextLink>
             )}
+            {!setup && <NotificationBell current={path.startsWith("/app/notifications")} />}
             <AccountMenu />
           </div>
         </div>

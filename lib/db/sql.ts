@@ -43,7 +43,11 @@ CREATE INDEX IF NOT EXISTS permits_open ON permits (mandate_id) WHERE closed_at 
 CREATE TABLE IF NOT EXISTS wallets (
   user_id TEXT PRIMARY KEY, data JSONB NOT NULL);
 CREATE TABLE IF NOT EXISTS wallet_setups (
-  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS alert_channels (
+  user_id TEXT PRIMARY KEY, data JSONB NOT NULL);
+CREATE TABLE IF NOT EXISTS telegram_links (
+  code TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())
 `;
 
 /** Runs the idempotent schema once, then every query waits for it. */

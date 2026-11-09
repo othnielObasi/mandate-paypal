@@ -138,6 +138,12 @@ export const Link = (p: P) => (
     <path d="M14 10a4 4 0 00-5.66 0l-3 3a4 4 0 005.66 5.66l1-1" />
   </Base>
 );
+export const Bell = (p: P) => (
+  <Base {...p}>
+    <path d="M6 16V11a6 6 0 0112 0v5l1.5 2h-15z" />
+    <path d="M10 20a2 2 0 004 0" />
+  </Base>
+);
 export const Alert = (p: P) => (
   <Base {...p}>
     <path d="M12 3l10 18H2z" />

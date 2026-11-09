@@ -1,3 +1,4 @@
+import { MemoryAlertStore, type AlertChannels, type AlertStore } from "../alerts/channels";
 import { MemoryWalletStore, type WalletRecord, type WalletStore } from "../paypal/vault";
 import type { Ap2PurchaseRecord } from "../ap2v2/records";
 import { MemoryLedger, type BudgetLedger } from "../core/ledger";
@@ -71,6 +72,7 @@ export interface Stores {
   passkeys: PasskeyStore;
   ledger: BudgetLedger;
   wallets: WalletStore;
+  alerts: AlertStore;
 }
 
 export function memoryStores(): Stores {
@@ -92,6 +94,7 @@ export function memoryStores(): Stores {
     connections: new MemoryConnectionStore(),
     passkeys: new MemoryPasskeyStore(),
     wallets: new MemoryWalletStore(),
+    alerts: new MemoryAlertStore(),
   };
 }
 
@@ -422,6 +425,27 @@ class PgWallets implements WalletStore {
   }
 }
 
+class PgAlerts implements AlertStore {
+  constructor(private db: PgDb) {}
+  async get(userId: string) {
+    return one(await this.db.q<Doc<AlertChannels>>(`SELECT data FROM alert_channels WHERE user_id = $1`, [userId]));
+  }
+  async put(c: AlertChannels) {
+    await this.db.q(`INSERT INTO alert_channels (user_id, data) VALUES ($1, $2::jsonb) ON CONFLICT (user_id) DO UPDATE SET data = EXCLUDED.data`, [c.userId, toJson(c)]);
+  }
+  async byTelegramChat(chatId: number) {
+    const rows = await this.db.q<{ user_id: string }>(`SELECT user_id FROM alert_channels WHERE (data->'telegram'->>'chatId')::bigint = $1 LIMIT 1`, [chatId]);
+    return rows[0]?.user_id;
+  }
+  async putLink(code: string, userId: string) {
+    await this.db.q(`INSERT INTO telegram_links (code, user_id) VALUES ($1, $2) ON CONFLICT (code) DO NOTHING`, [code, userId]);
+  }
+  async takeLink(code: string) {
+    const rows = await this.db.q<{ user_id: string }>(`DELETE FROM telegram_links WHERE code = $1 AND created_at > now() - interval '1 hour' RETURNING user_id`, [code]);
+    return rows[0]?.user_id;
+  }
+}
+
 export function pgStores(db: PgDb): Stores {
   return {
     mandates: new PgMandates(db),
@@ -438,6 +462,7 @@ export function pgStores(db: PgDb): Stores {
     connections: new PgConnections(db),
     passkeys: new PgPasskeys(db),
     wallets: new PgWallets(db),
+    alerts: new PgAlerts(db),
     ledger: new PgLedger(db),
   };
 }

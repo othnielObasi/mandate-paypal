@@ -32,6 +32,8 @@ import { DEMO_USER } from "./demo";
 import { ServerSdkOrderRecords, type OrderRecords } from "../paypal/order-records";
 import { PayPalAuth, PayPalWebhookVerifier } from "../paypal/webhook-verifier";
 import { ZapierHook } from "../automation/zapier";
+import { AlertRouter } from "../alerts/router";
+import { TelegramBot } from "../alerts/telegram";
 import { KernelPageReader, OwnPagesReader, WebReader } from "../web/reader";
 import { RateLimiter } from "./rate-limit";
 import type { WebhookVerifier } from "./webhooks";
@@ -74,6 +76,8 @@ export interface Container {
   orderRecords: OrderRecords;
   /** Saves a buyer's PayPal wallet (PayPal Vault), so purchases inside the rules need no trip to PayPal. */
   vault: Vault;
+  /** Each workspace's own alert channels (Telegram, Slack, Discord, Zapier). */
+  alerts: { router: AlertRouter; telegram: TelegramBot | null };
   /** Zapier: alerts out (ZAPIER_HOOK_URL), kill switch in (AUTOMATION_SECRET). */
   automation: { alerts: ZapierHook | null; killSwitchSecret: string | null };
 }
@@ -159,6 +163,9 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
   const receipts = new ReceiptLog(signer, clock, stores.receipts);
   const alerts = env.ZAPIER_HOOK_URL ? new ZapierHook({ url: env.ZAPIER_HOOK_URL, appUrl, onError: (e) => console.warn("Zapier alert not delivered:", e instanceof Error ? e.message : e) }) : null;
   if (alerts) receipts.subscribe((r) => alerts.notify(r));
+  const telegram = env.TELEGRAM_BOT_TOKEN ? new TelegramBot({ token: env.TELEGRAM_BOT_TOKEN }) : null;
+  const alertRouter = new AlertRouter({ store: stores.alerts, mandates, appUrl, telegram, onError: (e) => console.warn("Alert not delivered:", e instanceof Error ? e.message : e) });
+  receipts.subscribe((r) => alertRouter.route(r));
   const web = new WebReader(new OwnPagesReader(appUrl), env.KERNEL_API_KEY ? KernelPageReader.fromApiKey(env.KERNEL_API_KEY) : null);
   const killSwitchSecret = env.AUTOMATION_SECRET && env.AUTOMATION_SECRET.length >= 16 ? env.AUTOMATION_SECRET : null;
   const fulfilment = new Fulfilment({
@@ -283,6 +290,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     signingKey: env.MANDATE_SIGNING_KEY ? "configured" : "ephemeral",
     appUrl,
     automation: { alerts, killSwitchSecret },
+    alerts: { router: alertRouter, telegram },
     vault,
     orderRecords,
     web,
