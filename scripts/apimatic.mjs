@@ -48,9 +48,11 @@ function cli(args, key) {
 const [cmd = "validate", ...rest] = process.argv.slice(2);
 const key = apiKey();
 
-// The CLI reads specs from <input>/src/spec, so stage the one spec in a temp input folder.
+// The CLI reads specs from <input>/src/spec, so stage the one spec in a temp input folder,
+// with the portal's config and guide pages from apimatic/src.
 const input = mkdtempSync(join(tmpdir(), "mandate-apimatic-"));
 mkdirSync(join(input, "src", "spec"), { recursive: true });
+cpSync(join(root, "apimatic", "src"), join(input, "src"), { recursive: true });
 cpSync(spec, join(input, "src", "spec", "openapi.yaml"));
 
 let status = 0;
@@ -69,8 +71,16 @@ try {
         spawnSync("npm", ["install", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: dest, stdio: "inherit", shell: process.platform === "win32" });
       }
     }
+  } else if (cmd === "portal") {
+    // The API documentation portal, served by the app at /docs.
+    const dest = join(root, "public", "docs");
+    rmSync(dest, { recursive: true, force: true });
+    status = cli(["portal", "generate", "-i", input, "-d", dest, "-f"], key);
+  } else if (cmd === "plugin") {
+    // The context plugin that teaches AI coding assistants to use Mandate's SDKs.
+    status = cli(["plugin", "generate", "-i", input, "-d", join(root, "apimatic", "plugin"), "-f"], key);
   } else {
-    throw new Error(`Unknown command "${cmd}". Use "validate" or "sdk".`);
+    throw new Error(`Unknown command "${cmd}". Use "validate", "sdk", "portal" or "plugin".`);
   }
 } finally {
   rmSync(input, { recursive: true, force: true });

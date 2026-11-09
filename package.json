@@ -16,6 +16,8 @@
     "preview:smoke": "node preview/smoke.mjs",
     "api:validate": "node scripts/apimatic.mjs validate",
     "sdk:generate": "node scripts/apimatic.mjs sdk",
+    "docs:generate": "node scripts/apimatic.mjs portal",
+    "plugin:generate": "node scripts/apimatic.mjs plugin",
     "pretest": "npm --prefix sdks/typescript install --omit=dev --ignore-scripts --no-audit --no-fund --silent"
   },
   "dependencies": {
