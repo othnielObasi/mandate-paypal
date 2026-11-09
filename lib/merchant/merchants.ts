@@ -4,6 +4,7 @@ import type { Proposal } from "../core/stores";
 import type { OrderSpec } from "../gate/canonical";
 import type { Signer } from "../gate/keys";
 import type { Catalog } from "./catalog";
+import { isLive, liveDomain } from "./live";
 
 export interface MerchantInfo {
   id: string;
@@ -39,7 +40,7 @@ export class CatalogMerchants implements Merchants {
   private info: Map<string, { id: string; name: string; verified: boolean }>;
 
   constructor(
-    root: Signer,
+    private root: Signer,
     private catalog: Catalog,
     merchants: ReadonlyArray<{ id: string; name: string; verified: boolean }>,
   ) {
@@ -49,6 +50,12 @@ export class CatalogMerchants implements Merchants {
 
   async quote(p: Proposal, now: Date): Promise<Quote | { error: string }> {
     const merchantId = p.order?.merchantId;
+    // A real shop found through Channel3: the cart is signed by Mandate's listing key for it, and it is
+    // never a verified seller (the shop itself hasn't signed anything).
+    if (merchantId && isLive(merchantId) && !this.info.has(merchantId) && (p.order?.items ?? []).every((i) => this.catalog.get(i.sku)?.merchantId === merchantId)) {
+      this.info.set(merchantId, { id: merchantId, name: `${liveDomain(merchantId)} (Channel3 listing)`, verified: false });
+      this.keys.set(merchantId, deriveSigner(this.root, `merchant:${merchantId}`));
+    }
     const m = this.info.get(merchantId);
     if (!m) return { error: `${merchantId} is not a known merchant.` };
     const items = p.order?.items ?? [];

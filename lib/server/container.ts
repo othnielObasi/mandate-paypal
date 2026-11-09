@@ -15,6 +15,7 @@ import { ReceiptLog } from "../gate/receipts";
 import { SimulatedCarrier } from "../fulfilment/carrier";
 import { Fulfilment, type DisputeChannel, type TrackingChannel } from "../fulfilment/service";
 import { DEMO_CATALOG, Catalog } from "../merchant/catalog";
+import { Channel3Products } from "../merchant/live";
 import { CatalogMerchants, DEMO_MERCHANTS, type Merchants } from "../merchant/merchants";
 import { Credentials } from "../ap2/credentials";
 import { checkPayment } from "../ap2/check";
@@ -208,7 +209,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
       pay: (order, token, meta) => vault.pay(order, token, meta),
     },
   });
-  const catalog = new Catalog(DEMO_CATALOG);
+  const catalog = new Catalog(DEMO_CATALOG, env.CHANNEL3_API_KEY ? new Channel3Products({ apiKey: env.CHANNEL3_API_KEY }) : undefined);
   const credentials = new Credentials(signer);
   const market: PriceOracle = env.CHANNEL3_API_KEY ? new Channel3Oracle({ apiKey: env.CHANNEL3_API_KEY }) : new SimulatedMarket();
   const merchants = new CatalogMerchants(signer, catalog, DEMO_MERCHANTS);

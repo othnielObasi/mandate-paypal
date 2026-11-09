@@ -103,7 +103,14 @@ const PARCEL = (
 
 const TONE: Record<string, string> = { household: "art-household", office: "art-office", "gift-cards": "art-gift" };
 
-export function ProductArt({ sku, category, size = 56 }: { sku: string; category?: string; size?: number }) {
+export function ProductArt({ sku, category, size = 56, image }: { sku: string; category?: string; size?: number; image?: string }) {
+  if (image)
+    return (
+      <span className="art art-photo" style={{ width: size, height: size }} aria-hidden="true">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={image} alt="" width={size} height={size} loading="lazy" referrerPolicy="no-referrer" />
+      </span>
+    );
   return (
     <span className={`art ${TONE[category ?? ""] ?? "art-household"}`} style={{ width: size, height: size }} aria-hidden="true">
       <svg viewBox="0 0 64 64" width={size * 0.72} height={size * 0.72} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

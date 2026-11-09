@@ -110,7 +110,7 @@ export class AgentSession {
     try {
       switch (name) {
         case "search_catalog":
-          return this.search(input);
+          return await this.search(input);
         case "get_product":
           return this.product(input);
         case "propose_purchase":
@@ -126,16 +126,24 @@ export class AgentSession {
     }
   }
 
-  private search(input: unknown): ToolResult {
+  private async search(input: unknown): Promise<ToolResult> {
     const parsed = SearchIn.safeParse(input);
     if (!parsed.success) return { ok: false, error: "search_catalog needs a text query." };
     const tainted = tokens(parsed.data.query).some((t) => this.untrustedVocab.has(t));
-    const found = this.d.catalog.search(parsed.data.query);
+    const found = await this.d.catalog.find(parsed.data.query);
     for (const p of found) this.discovered.set(p.sku, (this.discovered.get(p.sku) ?? false) || !tainted);
     return {
       ok: true,
       result: {
-        results: found.map((p) => ({ sku: p.sku, title: p.title, category: p.category, price: money(p.unitMinor), seller: p.merchantId, verifiedSeller: p.merchantVerified })),
+        results: found.map((p) => ({
+          sku: p.sku,
+          title: p.title,
+          category: p.category,
+          price: money(p.unitMinor),
+          seller: p.live ? p.live.domain : p.merchantId,
+          verifiedSeller: p.merchantVerified,
+          ...(p.live ? { listing: `Real product listed by ${p.live.source}; checkout is the PayPal sandbox` } : {}),
+        })),
       },
     };
   }

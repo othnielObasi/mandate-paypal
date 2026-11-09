@@ -72,7 +72,7 @@ describe("API: health and config", () => {
 
   it("publishes the receipt public key and the catalogue", async () => {
     expect(await (await publicKey()).text()).toMatch(/BEGIN PUBLIC KEY/);
-    const items = (await (await catalog()).json()) as Array<{ sku: string }>;
+    const items = (await (await catalog(new Request("http://localhost:3000/api/catalog"))).json()) as Array<{ sku: string }>;
     expect(items.map((i) => i.sku)).toContain("wul-500");
   });
 });

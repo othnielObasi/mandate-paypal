@@ -1,3 +1,5 @@
+import type { LiveSource } from "./live";
+
 export interface Product {
   sku: string;
   title: string;
@@ -8,6 +10,10 @@ export interface Product {
   merchantVerified: boolean;
   /** Merchant-written page text. Untrusted: it may contain instructions aimed at agents. */
   description: string;
+  /** Product photo (real products only). */
+  image?: string;
+  /** A real product found through Channel3; checkout still goes to the PayPal sandbox. */
+  live?: { source: "Channel3"; domain: string };
 }
 
 /**
@@ -50,18 +56,46 @@ export function tokens(text: string): string[] {
     .map((t) => (t.length > 3 && t.endsWith("s") && !t.endsWith("ss") ? t.slice(0, -1) : t));
 }
 
+const MAX_SEEN = 400;
+
 export class Catalog {
   private bySku: Map<string, Product>;
-  constructor(private products: Product[]) {
+  /** Real products found so far, so a later step (get_product, propose, the seller's quote) can find them. */
+  private seen = new Map<string, Product>();
+  constructor(
+    private products: Product[],
+    private liveSource?: LiveSource,
+  ) {
     this.bySku = new Map(products.map((p) => [p.sku, p]));
   }
 
   get(sku: string): Product | undefined {
-    return this.bySku.get(sku);
+    return this.bySku.get(sku) ?? this.seen.get(sku);
   }
 
   all(): Product[] {
-    return [...this.products];
+    return [...this.products, ...this.seen.values()];
+  }
+
+  /** Where real products come from, if anywhere. */
+  get liveName(): string | null {
+    return this.liveSource?.name ?? null;
+  }
+
+  /**
+   * The demo store first, so the guided demo is the same every time; when it has nothing,
+   * real products from the live source (if one is set).
+   */
+  async find(query: string, limit = 5): Promise<Product[]> {
+    const local = this.search(query, limit);
+    if (local.length || !this.liveSource) return local;
+    const live = await this.liveSource.search(query, limit).catch(() => [] as Product[]);
+    for (const p of live) {
+      this.seen.delete(p.sku);
+      this.seen.set(p.sku, p);
+      if (this.seen.size > MAX_SEEN) this.seen.delete(this.seen.keys().next().value!);
+    }
+    return live;
   }
 
   /** Matches on title and category only — never on merchant-written descriptions. */

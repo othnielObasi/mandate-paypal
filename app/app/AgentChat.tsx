@@ -8,7 +8,7 @@ import { useStore, type AgentEvent, type GateTrace, type ProposeResult, type Run
 
 const SUGGESTIONS = ["Buy washing-up liquid and sponges", "Buy an electric kettle", "Buy toilet roll", "Buy black ink"];
 
-type Product = { sku: string; title: string; category: string; unitMinor: number; merchantId: string; merchantVerified: boolean; description: string };
+type Product = { sku: string; title: string; category: string; unitMinor: number; merchantId: string; merchantVerified: boolean; description: string; image?: string; live?: { source: string; domain: string } };
 type Merchants = Record<string, { name: string; verified: boolean }>;
 type Ctx = { products: Record<string, Product>; merchants: Merchants };
 
@@ -39,10 +39,23 @@ export function AgentChat({ disabled }: { disabled: boolean }) {
   const [ctx, setCtx] = useState<Ctx>({ products: {}, merchants: {} });
   const thread = useRef<HTMLDivElement>(null);
 
+  // Products the agent finds that we don't have details for yet (real products from Channel3): fetch them.
+  const missing = useMemo(() => {
+    const skus = new Set<string>();
+    for (const t of turns)
+      for (const e of t.events)
+        if (e.kind === "tool" && e.name === "search_catalog" && e.ok)
+          for (const r of (e.result as { results?: Array<{ sku: string }> })?.results ?? []) if (!ctx.products[r.sku]) skus.add(r.sku);
+    return [...skus].sort().join(",");
+  }, [turns, ctx.products]);
+
   useEffect(() => {
-    api<Product[]>("/api/catalog")
-      .then((list) => setCtx((c) => ({ ...c, products: Object.fromEntries(list.map((p) => [p.sku, p])) })))
+    api<Product[]>(missing ? `/api/catalog?sku=${encodeURIComponent(missing)}` : "/api/catalog")
+      .then((list) => setCtx((c) => ({ ...c, products: { ...c.products, ...Object.fromEntries(list.map((p) => [p.sku, p])) } })))
       .catch(() => undefined);
+  }, [missing]);
+
+  useEffect(() => {
     api<{ merchants: Merchants }>("/api/trust")
       .then((t) => setCtx((c) => ({ ...c, merchants: t.merchants })))
       .catch(() => undefined);
@@ -302,7 +315,7 @@ function ProductCard({
   return (
     <li className={`pcard pcard-${st.tone}`}>
       <div className="pcard-main">
-        <ProductArt sku={sku} category={p?.category} />
+        <ProductArt sku={sku} category={p?.category} image={p?.image} />
         <div className="pcard-body">
           <div className="pcard-top">
             <strong className="pcard-title">{title}</strong>
@@ -315,10 +328,11 @@ function ProductCard({
           </div>
           {p && (
             <p className="pcard-meta">
-              {seller}
+              {p.live ? p.live.domain : seller}
               <span className={p.merchantVerified ? "tone-allow" : "tone-block"}>{p.merchantVerified ? " · ✓ Verified seller" : " · Not a verified seller"}</span>
             </p>
           )}
+          {p?.live && <span className="pcard-live">Real product · via {p.live.source} · sandbox checkout</span>}
           {p?.description && <p className="pcard-desc">{blurb(p.description)}</p>}
         </div>
       </div>
