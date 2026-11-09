@@ -20,6 +20,10 @@ export interface DecisionRow {
   amount: number;
   /** Who started it: Mandate's agent, an outside assistant, or a page that steered the agent. */
   source: string;
+  /** Channel3's market price for the same cart ($), 0 if none was found. */
+  market: number;
+  /** How much below the market an allowed purchase was ($), else 0. */
+  saved: number;
 }
 
 export interface PaymentRow {
@@ -75,6 +79,8 @@ export function decisionRow(r: Receipt): DecisionRow | null {
   const outcome = OUTCOME[d.outcome as keyof typeof OUTCOME];
   if (!outcome) return null;
   const intent = obj(p.intent);
+  const market = dollars(obj(p.market).referenceMinor);
+  const amount = dollars(intent.amountMinor);
   const rule = str(d.rule, "unknown");
   // The summary is "Allowed: <item> $4.50 from <merchant> (via <assistant>). <reason>"; "via" names an outside assistant.
   const via = /\(via ([^)]+)\)/.exec(r.summary)?.[1];
@@ -89,8 +95,10 @@ export function decisionRow(r: Receipt): DecisionRow | null {
     item: str(intent.itemTitle, /^Blocked: ([^.]+)\./.exec(r.summary)?.[1] ?? "Unknown item"),
     category: str(intent.category, "unknown"),
     merchant: str(intent.merchantId, "unknown"),
-    amount: dollars(intent.amountMinor),
+    amount,
     source: steered ? "A web or product page" : via === SCHEDULED ? "Scheduled buy" : via ? `Outside assistant: ${via}` : "Mandate's agent",
+    market,
+    saved: outcome === "Allowed" && market > amount ? Math.round((market - amount) * 100) / 100 : 0,
   };
 }
 

@@ -33,6 +33,7 @@ export const REPORT: AgReportState = {
         waiting: { type: "value", dataMapping: { value: [{ id: "payments.waiting", aggregation: "sum" }] }, format: kpi("Waiting for PayPal ($)") },
         payments: { type: "value", dataMapping: { value: [{ id: "payments.paidN", aggregation: "sum" }] }, format: kpi("Payments") },
         decisions: { type: "value", dataMapping: { value: [{ id: "decisions.n", aggregation: "sum" }] }, format: kpi("Gate decisions") },
+        saved: { type: "value", dataMapping: { value: [{ id: "decisions.saved", aggregation: "sum" }] }, format: kpi("Saved vs market ($)") },
         outcomes: {
           type: "donut-chart",
           dataMapping: { categoryKey: [{ id: "decisions.outcome" }], valueKey: [{ id: "decisions.n", aggregation: "sum" }] },
@@ -75,10 +76,11 @@ export const REPORT: AgReportState = {
         },
       },
       widgetLayout: {
-        paid: { xTrack: 0, yTrack: 0, xSpan: 6, ySpan: 6 },
-        waiting: { xTrack: 6, yTrack: 0, xSpan: 6, ySpan: 6 },
-        payments: { xTrack: 12, yTrack: 0, xSpan: 6, ySpan: 6 },
-        decisions: { xTrack: 18, yTrack: 0, xSpan: 6, ySpan: 6 },
+        paid: { xTrack: 0, yTrack: 0, xSpan: 5, ySpan: 6 },
+        waiting: { xTrack: 5, yTrack: 0, xSpan: 5, ySpan: 6 },
+        saved: { xTrack: 10, yTrack: 0, xSpan: 5, ySpan: 6 },
+        payments: { xTrack: 15, yTrack: 0, xSpan: 4, ySpan: 6 },
+        decisions: { xTrack: 19, yTrack: 0, xSpan: 5, ySpan: 6 },
         outcomes: { xTrack: 0, yTrack: 6, xSpan: 9, ySpan: 14 },
         rules: { xTrack: 9, yTrack: 6, xSpan: 15, ySpan: 14 },
         daily: { xTrack: 0, yTrack: 20, xSpan: 12, ySpan: 14 },
@@ -111,6 +113,8 @@ export const FIELDS: Record<"decisions" | "payments", AgFieldDefinition[]> = {
     text("merchant", "Merchant"),
     num("amount", "Amount ($)"),
     text("source", "Started by"),
+    num("market", "Market price ($)"),
+    num("saved", "Saved vs market ($)"),
   ],
   payments: [
     num("n", "Count", "integerFormat"),

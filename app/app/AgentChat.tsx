@@ -334,6 +334,7 @@ function ProductCard({
           )}
           {p?.live && <span className="pcard-live">Real product · via {p.live.source} · sandbox checkout</span>}
           {p?.description && <p className="pcard-desc">{blurb(p.description)}</p>}
+          {p && current.market && <MarketLine youPay={p.unitMinor * qty} m={current.market} />}
         </div>
       </div>
 
@@ -469,5 +470,17 @@ function SearchIcon() {
       <circle cx="11" cy="11" r="7" />
       <path d="M20 20l-3.5-3.5" />
     </svg>
+  );
+}
+
+/** Channel3's price for similar items: "Similar items: median $5.10 across 8 shops · this is 11% less". */
+function MarketLine({ youPay, m }: { youPay: number; m: NonNullable<ProposeResult["market"]> }) {
+  const diff = Math.round(((youPay - m.referenceMinor) / m.referenceMinor) * 100);
+  const tone = diff <= 0 ? "tone-allow" : diff > 10 ? "tone-block" : "";
+  const vs = diff === 0 ? "the same price" : diff < 0 ? `${-diff}% less` : `${diff}% more`;
+  return (
+    <p className="pcard-market" data-testid="market-line">
+      Similar items: median {usd(m.referenceMinor)} across {m.products} shops ({m.source}) · <span className={tone}>this is {vs}</span>
+    </p>
   );
 }

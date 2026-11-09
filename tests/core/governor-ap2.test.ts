@@ -161,11 +161,12 @@ describe("governor: market-price rule", () => {
     expect((await env.governor.propose(prop(allowed.id, "wul-500"))).status).toBe("paid");
   });
 
-  it("does not look up prices when the mandate has no market rule", async () => {
-    let calls = 0;
-    const env = build("catalog", { name: "count", reference: async () => (calls++, null) });
+  it("without a market rule, the price is looked up to show but never decides the purchase", async () => {
+    // Far above the market: would be stopped if the rule were on.
+    const env = build("catalog", { name: "count", reference: async () => ({ referenceMinor: 100, currency: "USD", products: 9, source: "count" }) });
     const m = await env.governor.createMandate({ userId: "u1", policy, rawText: "" });
-    await env.governor.propose(prop(m.id, "wul-500"));
-    expect(calls).toBe(0);
+    const r = await env.governor.propose(prop(m.id, "wul-500"));
+    expect(r.status).toBe("paid");
+    expect(r).toMatchObject({ market: { referenceMinor: 100, products: 9, source: "count" } });
   });
 });

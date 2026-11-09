@@ -21,6 +21,7 @@ function DashboardSkeleton() {
 
 // AG Studio is large and browser-only: load it on this page alone.
 const Dashboard = dynamic(() => import("./Dashboard"), { ssr: false, loading: () => <DashboardSkeleton /> });
+const DecisionExplorer = dynamic(() => import("./DecisionExplorer"), { ssr: false, loading: () => <SkCard lines={6} height={420} /> });
 
 export default function InsightsPage() {
   const { mandate, receipts } = useStore();
@@ -56,6 +57,9 @@ export default function InsightsPage() {
         </p>
       )}
       {insights ? <Dashboard insights={insights} editing={editing} /> : <DashboardSkeleton />}
+      <div style={{ marginTop: 24 }}>
+        <DecisionExplorer receipts={receipts} mandateId={mandateId} />
+      </div>
     </>
   );
 }

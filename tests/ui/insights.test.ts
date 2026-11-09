@@ -36,6 +36,8 @@ describe("Insights rows", () => {
       merchant: "acme-supplies",
       amount: 32,
       source: "Mandate's agent",
+      market: 0,
+      saved: 0,
     });
   });
 

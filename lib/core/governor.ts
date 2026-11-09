@@ -27,7 +27,9 @@ import type { ApprovalStore, MandateRecord, MandateStore, Proposal } from "./sto
 export const APPROVAL_TTL_MS = 15 * 60_000;
 
 /** What the gate checked, rule by rule, for people (see explain.ts). Absent when a pre-gate check stopped the purchase. */
-type Traced = { trace?: GateTrace };
+/** The market price for the cart, shown on the product card even when the fair-price rule is off. */
+export type MarketSeen = { referenceMinor: number; products: number; source: string };
+type Traced = { trace?: GateTrace; market?: MarketSeen };
 
 export type ProposeResult = (
   | { status: "paid"; decision: Decision; paypalOrderId: string; amountMinor: number; paymentMandateId: string }
@@ -144,7 +146,7 @@ export class Governor {
   private async traced(fn: (sink: Traced) => Promise<ProposeResult>): Promise<ProposeResult> {
     const sink: Traced = {};
     const r = await fn(sink);
-    return sink.trace ? { ...r, trace: sink.trace } : r;
+    return { ...r, ...(sink.trace ? { trace: sink.trace } : {}), ...(sink.market ? { market: sink.market } : {}) };
   }
 
   async decide(approvalId: string, choice: "approve" | "decline", opts: { passkey?: PasskeyAssertion } = {}): Promise<ProposeResult> {
@@ -194,9 +196,12 @@ export class Governor {
     });
   }
 
-  /** Market reference for the whole cart (each line's unit reference × qty), or null if any line has none. */
-  private async marketReference(policy: Policy, order: { currency: string; items: Array<{ title: string; qty: number }> }): Promise<(MarketQuote & { lines: number }) | null> {
-    if (policy.maxPremiumPct === null || policy.maxPremiumPct === undefined || !this.d.market) return null;
+  /**
+   * Market reference for the whole cart (each line's unit reference × qty), or null if any line has none.
+   * Looked up for every purchase (answers are cached) so it can be shown; the rule applies only if switched on.
+   */
+  private async marketReference(order: { currency: string; items: Array<{ title: string; qty: number }> }): Promise<(MarketQuote & { lines: number }) | null> {
+    if (!this.d.market) return null;
     let total = 0;
     let products = Infinity;
     let source = "";
@@ -233,7 +238,9 @@ export class Governor {
     if ("error" in q) return this.logBlock(mandate.id, block("invalid_input", `The merchant refused to quote: ${q.error}`), "no quote");
     const order = q.order;
     const amountMinor = orderTotalMinor(order);
-    const market = await this.marketReference(mandate.policy, order);
+    const market = await this.marketReference(order).catch(() => null);
+    const priceRuleOn = mandate.policy.maxPremiumPct !== null && mandate.policy.maxPremiumPct !== undefined;
+    if (sink && market) sink.market = { referenceMinor: market.referenceMinor, products: market.products, source: market.source };
     const itemTitle = order.items.map((i) => (i.qty > 1 ? `${i.qty} × ${i.title}` : i.title)).join(", ");
     const intent: Intent = {
       id: randomUUID(),
@@ -246,7 +253,7 @@ export class Governor {
       category: q.category,
       itemTitle,
       origin: p.origin,
-      ...(market ? { marketReferenceMinor: market.referenceMinor } : {}),
+      ...(market && priceRuleOn ? { marketReferenceMinor: market.referenceMinor } : {}),
     };
     // Budget check through money reservation happens under a per-mandate lock: agents buying
     // at the same moment are decided one after another, each seeing the others' reservations.
@@ -255,7 +262,10 @@ export class Governor {
       const at = this.d.clock();
       const { spentMinor, reservedMinor } = await this.ledger.committed(mandate.id, mandate.policy.budget.period, at);
       const decision = evaluate(mandate, intent, { now, spentMinor, reservedMinor, approved });
-      if (sink) sink.trace = explain(mandate, intent, { now, spentMinor, reservedMinor, approved });
+      const trace = explain(mandate, intent, { now, spentMinor, reservedMinor, approved });
+      if (sink) sink.trace = trace;
+      // Each rule's result, so the decision can be audited rule by rule later (Insights → Decision explorer).
+      const checks = Object.fromEntries(trace.steps.map((st) => [st.rule, st.status]));
       const digest = orderDigest(order);
       const money = formatMoney(amountMinor, order.currency);
       const label = { allow: "Allowed", approve: "Needs approval", block: "Blocked" }[decision.outcome];
@@ -265,7 +275,7 @@ export class Governor {
         mandateId: mandate.id,
         type: "decision",
         summary: `${label}: ${itemTitle} ${money} from ${q.merchant.name}${p.via ? ` (via ${p.via})` : ""}. ${decision.reason}`,
-        payload: { intent, decision, digest, spentMinor, reservedMinor, cartId: q.cart.contents.id, cartHash, market },
+        payload: { intent, decision, digest, spentMinor, reservedMinor, cartId: q.cart.contents.id, cartHash, market, checks },
       });
 
       if (decision.outcome === "block") return { early: { status: "blocked", decision } };
