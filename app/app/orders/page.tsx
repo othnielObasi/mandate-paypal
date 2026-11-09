@@ -232,8 +232,12 @@ function OrderCard({ o, busy, run, save }: { o: OrderView; busy: boolean; run: R
                     <br />
                     <span className="small">
                       Checkout and payment mandates, signed checkout, receipts ·{" "}
+                      <a href={`/api/receipts/pdf/${encodeURIComponent(o.id)}`} download={`mandate-receipt-${o.id}.pdf`}>
+                        receipt (PDF)
+                      </a>{" "}
+                      ·{" "}
                       <a href={`/api/ap2/orders/${encodeURIComponent(o.id)}`} download={`ap2-evidence-${o.id}.json`}>
-                        download
+                        evidence (JSON)
                       </a>
                     </span>
                   </span>

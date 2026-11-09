@@ -700,7 +700,10 @@ function ProofSheet({ a, onClose }: { a: Activity; onClose: () => void }) {
             </p>
           </section>
           <div className="row">
-            <a className="btn btn-primary grow" href={`/api/ap2/orders/${encodeURIComponent(a.paypalOrderId!)}`} download={`ap2-evidence-${a.paypalOrderId}.json`}>
+            <a className="btn btn-primary grow" href={`/api/receipts/pdf/${encodeURIComponent(a.paypalOrderId!)}`} download={`mandate-receipt-${a.paypalOrderId}.pdf`}>
+              Receipt (PDF)
+            </a>
+            <a className="btn grow" href={`/api/ap2/orders/${encodeURIComponent(a.paypalOrderId!)}`} download={`ap2-evidence-${a.paypalOrderId}.json`}>
               Download evidence
             </a>
             <NextLink className="btn grow" href={`/seller?merchant=${encodeURIComponent(a.merchantId)}&order=${encodeURIComponent(a.paypalOrderId!)}`} onClick={onClose}>

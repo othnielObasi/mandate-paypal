@@ -248,6 +248,9 @@ function SellerView() {
                     </p>
                   ))}
                   <div className="row mt-16">
+                    <a className="btn btn-sm" href={`/api/receipts/pdf/${encodeURIComponent(detail.paypalOrderId)}`} download={`mandate-receipt-${detail.paypalOrderId}.pdf`}>
+                      <Download size={15} /> Receipt (PDF)
+                    </a>
                     {ap2 ? (
                       <a className="btn btn-sm btn-primary" href={`/api/ap2/orders/${encodeURIComponent(detail.paypalOrderId)}`} download={`ap2-evidence-${detail.paypalOrderId}.json`}>
                         <Download size={15} /> Download AP2 evidence pack
