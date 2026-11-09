@@ -16,7 +16,8 @@ export type WebhookChannel = "slack" | "discord" | "zapier";
 const PATTERNS: Record<WebhookChannel, RegExp> = {
   slack: /^https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]{10,200}$/,
   discord: /^https:\/\/(?:discord\.com|discordapp\.com)\/api\/webhooks\/\d{5,30}\/[A-Za-z0-9_-]{20,120}$/,
-  zapier: /^https:\/\/hooks\.zapier\.com\/hooks\/catch\/\d{1,20}\/[A-Za-z0-9]{3,40}\/?$/,
+  // Catch Hooks, including custom ids (letters, digits, - and _) and the "/silent" variant.
+  zapier: /^https:\/\/hooks\.zapier\.com\/hooks\/(?:catch|standard)\/\d{1,20}\/[A-Za-z0-9_-]{3,64}(?:\/silent)?\/?$/,
 };
 
 export function validWebhook(channel: WebhookChannel, url: string): boolean {

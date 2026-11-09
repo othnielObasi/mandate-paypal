@@ -58,6 +58,7 @@ describe("alert channels", () => {
     expect(validWebhook("slack", "https://hooks.slack.com/services/T000/B000/XXXXXXXXXXXX")).toBe(true);
     expect(validWebhook("discord", "https://discord.com/api/webhooks/123456789/abcdefghijklmnopqrstuvwxyz_-12")).toBe(true);
     expect(validWebhook("zapier", "https://hooks.zapier.com/hooks/catch/123/abc123/")).toBe(true);
+    for (const ok of ["https://hooks.zapier.com/hooks/catch/123/my-orders_hook/", "https://hooks.zapier.com/hooks/catch/123/abc123/silent/", "https://hooks.zapier.com/hooks/catch/123/abc123"]) expect(validWebhook("zapier", ok)).toBe(true);
     for (const bad of ["http://hooks.slack.com/services/T/B/X", "https://hooks.slack.com.evil.com/services/T000/B000/XXXX", "https://169.254.169.254/latest", "https://hooks.zapier.com/hooks/catch/1/a/../../x"])
       expect(validWebhook("slack", bad) || validWebhook("zapier", bad)).toBe(false);
   });
