@@ -129,6 +129,38 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (p) toast(p === "paid" ? "Payment captured in PayPal." : p === "cancelled" ? "Payment cancelled in PayPal. Nothing was charged." : `PayPal: ${p.replace(/_/g, " ")}`);
   }, [refresh, toast]);
 
+  // Things can happen without you: an outside assistant buys, PayPal confirms a payment, an approval expires.
+  // While this tab is visible, look for new receipts every few seconds and refresh when there are any.
+  const busyRef = useRef(false);
+  busyRef.current = busy;
+  const lastSeq = useRef(0);
+  useEffect(() => {
+    const id = mandateId;
+    lastSeq.current = id ? Math.max(0, ...receipts.filter((r) => r.mandateId === id).map((r) => r.seq)) : 0;
+  }, [receipts, mandateId]);
+  useEffect(() => {
+    let running = false;
+    const tick = async () => {
+      const id = idRef.current;
+      if (!id || running || busyRef.current || document.visibilityState !== "visible") return;
+      running = true;
+      try {
+        const mine = await api<Receipt[]>(`/api/receipts?mandateId=${encodeURIComponent(id)}`);
+        if ((mine.at(-1)?.seq ?? 0) > lastSeq.current) await refresh();
+      } catch {
+        // Offline or a deploy in progress: try again next time.
+      } finally {
+        running = false;
+      }
+    };
+    const t = setInterval(tick, 6000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [refresh]);
+
   const act = useCallback(async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
     setBusy(true);
     setError(null);

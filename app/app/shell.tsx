@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Box, Chart, Home, Mark, Plug, Receipt } from "../components/icons";
+import { Alert, Bell, Box, Chart, Check, Cross, Home, Mark, Pause, Plug, Receipt } from "../components/icons";
+import { EVENT_TITLE, type AutomationEvent } from "@/lib/alerts/events";
 import { useNotifications } from "./notifications/useNotifications";
 import { useStore } from "./store";
 
@@ -13,16 +14,74 @@ const NAV = [
   { href: "/app/assistants", label: "Assistants", icon: Plug },
   { href: "/app/receipts", label: "Receipts", icon: Receipt },
   { href: "/app/insights", label: "Insights", icon: Chart },
+  { href: "/app/notifications", label: "Notifications", short: "Alerts", icon: Bell },
 ] as const;
 
-/** Bell with the number of new notifications since you last looked. */
-function NotificationBell({ current }: { current: boolean }) {
-  const { unread } = useNotifications();
+const TONE: Record<AutomationEvent["event"], "ask" | "block" | "allow" | "plain"> = {
+  "approval.needed": "ask",
+  "purchase.blocked": "block",
+  "purchase.paid": "allow",
+  "payment.failed": "block",
+  "mandate.status_changed": "plain",
+};
+const TONE_ICON = { ask: Alert, block: Cross, allow: Check, plain: Pause } as const;
+
+/**
+ * Pops up when something new happens that you didn't just watch in the chat: an outside assistant's
+ * purchase, PayPal confirming a payment, an approval from Telegram. Stays quiet while the agent runs.
+ */
+function LiveToast() {
+  const { ready, busy, mandate } = useStore();
+  const { items } = useNotifications();
+  const [show, setShow] = useState<AutomationEvent | null>(null);
+  const base = useRef<{ id: string; seq: number } | null>(null);
+  const quietUntil = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    if (busy) quietUntil.current = Date.now() + 5000;
+  }, [busy]);
+
+  useEffect(() => {
+    if (!ready || !mandate) return;
+    const top = items[0]?.receipt.seq ?? 0;
+    // Start from what is already there: only later events pop up.
+    if (!base.current || base.current.id !== mandate.id) {
+      base.current = { id: mandate.id, seq: top };
+      return;
+    }
+    if (top <= base.current.seq) return;
+    const fresh = items.find((e) => e.receipt.seq > base.current!.seq);
+    base.current.seq = top;
+    if (!fresh || busy || Date.now() < quietUntil.current) return;
+    setShow(fresh);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setShow(null), 8000);
+  }, [items, ready, mandate, busy]);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+  if (!show) return null;
+  const tone = TONE[show.event];
+  const Icon = TONE_ICON[tone];
+  const go = show.event === "approval.needed" ? { href: "/app", label: "Review" } : { href: "/app/notifications", label: "View" };
   return (
-    <NextLink href="/app/notifications" className="bell" aria-current={current ? "page" : undefined} aria-label={unread ? `Notifications, ${unread} new` : "Notifications"}>
-      <Bell size={20} />
-      {unread > 0 && <span className="count" aria-hidden="true">{unread > 9 ? "9+" : unread}</span>}
-    </NextLink>
+    <div className={`live-toast notif-${tone}`} role="status" aria-live="polite">
+      <span className="notif-ic" aria-hidden="true">
+        <Icon size={16} />
+      </span>
+      <span className="notif-body">
+        <span className="notif-title">{EVENT_TITLE[show.event]}</span>
+        <span className="notif-text live-toast-text">{show.message.replace(/^Mandate:\s*/, "").replace(/^(Blocked|Approve):\s*/, "")}</span>
+      </span>
+      <span className="live-toast-actions">
+        <NextLink className="btn btn-sm" href={go.href} onClick={() => setShow(null)}>
+          {go.label}
+        </NextLink>
+        <button type="button" className="live-toast-x" aria-label="Dismiss" onClick={() => setShow(null)}>
+          ✕
+        </button>
+      </span>
+    </div>
   );
 }
 
@@ -101,9 +160,10 @@ function AccountMenu() {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const { health, approvals, orders, error, clearError } = useStore();
+  const { unread } = useNotifications();
   const setup = path.startsWith("/app/setup");
   const problems = orders.filter((o) => o.problem && o.dispute?.status !== "filed" && o.dispute?.status !== "open").length;
-  const count = (href: string) => (href === "/app" ? approvals.length : href === "/app/orders" ? problems : 0);
+  const count = (href: string) => (href === "/app" ? approvals.length : href === "/app/orders" ? problems : href === "/app/notifications" ? unread : 0);
   const current = (href: string) => (href === "/app" ? path === "/app" : path.startsWith(href));
   const live = health && health.provider !== "simulated";
 
@@ -151,7 +211,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 Seller view
               </NextLink>
             )}
-            {!setup && <NotificationBell current={path.startsWith("/app/notifications")} />}
             <AccountMenu />
           </div>
         </div>
@@ -174,15 +233,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {!setup && (
         <nav className="tabbar" aria-label="Main">
-          {NAV.map(({ href, label, icon: Icon }) => (
-            <NextLink key={href} href={href} aria-current={current(href) ? "page" : undefined}>
-              <Icon size={22} />
-              {label}
-              {count(href) > 0 && <span className="count">{count(href)}</span>}
+          {NAV.map((n) => (
+            <NextLink key={n.href} href={n.href} aria-current={current(n.href) ? "page" : undefined}>
+              <n.icon size={22} />
+              {"short" in n ? n.short : n.label}
+              {count(n.href) > 0 && <span className="count">{count(n.href)}</span>}
             </NextLink>
           ))}
         </nav>
       )}
+      {!setup && !path.startsWith("/app/notifications") && <LiveToast />}
     </>
   );
 }

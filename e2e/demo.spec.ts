@@ -320,3 +320,20 @@ test("connect PayPal once, then purchases inside the rules are paid from it; sig
   await page.goto("/app");
   await expect(page.getByRole("link", { name: "Write my mandate" })).toBeVisible();
 });
+
+test("something that happens outside the chat pops up live, and Notifications in the menu counts it", async ({ page }) => {
+  await newMandate(page);
+  // An outside assistant (or anything else) asks for an over-limit item, not through this page's chat.
+  await page.evaluate(async () => {
+    const ms = (await (await fetch("/api/mandates")).json()) as Array<{ id: string }>;
+    await fetch("/api/agent/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mandateId: ms.at(-1)!.id, task: "Buy an electric kettle" }) });
+  });
+  const toast = page.locator(".live-toast");
+  await expect(toast).toContainText("Needs your approval", { timeout: 20000 });
+  await expect(toast).toContainText("Electric kettle");
+  await expect(page.getByRole("navigation", { name: "Main" }).first().getByRole("link", { name: /Notifications/ })).toContainText("1");
+  await toast.getByRole("link", { name: "Review" }).click();
+  await expect(page.getByTestId("approval")).toBeVisible();
+  await page.getByRole("navigation", { name: "Main" }).first().getByRole("link", { name: /Notifications/ }).click();
+  await expect(page.getByTestId("notifications")).toContainText("Needs your approval");
+});
