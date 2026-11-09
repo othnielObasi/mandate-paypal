@@ -1022,3 +1022,42 @@ button.act:hover { background: var(--surface-2); }
 .sdk-links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .sdk-links li { display: flex; flex-direction: column; gap: 2px; }
 .sdk-links a { font-weight: 600; }
+
+/* Developers page: one column of full-width sections; the docs are the first thing you see. */
+.dev { display: flex; flex-direction: column; gap: 56px; padding-bottom: 72px; }
+.dev-hero { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding-top: 12px; max-width: 860px; }
+.dev-hero h1 { margin: 0; font-size: clamp(32px, 4.6vw, 52px); line-height: 1.05; letter-spacing: -0.035em; text-wrap: balance; }
+.dev-hero p { margin: 0; font-size: 18px; color: var(--muted); max-width: 64ch; }
+.dev-cta { flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.dev-kicker { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 0 0 14px; }
+.dev-starts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.dev-start { height: 100%; display: flex; flex-direction: column; gap: 8px; padding: 20px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); color: var(--ink); text-decoration: none; box-shadow: var(--shadow-1); transition: border-color .15s, transform .15s; }
+.dev-start:hover, .dev-start:focus-visible { border-color: var(--accent); transform: translateY(-2px); }
+.dev-start:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dev-start strong { font-size: 16px; }
+.dev-start > span:not(.dev-start-ic):not(.dev-start-go) { font-size: 14px; color: var(--muted); line-height: 1.5; }
+.dev-start-ic { width: 40px; height: 40px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; background: var(--accent-tint); color: var(--accent); margin-bottom: 4px; }
+.dev-start-go { margin-top: auto; padding-top: 6px; font-size: 14px; font-weight: 600; color: var(--accent); }
+.dev-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+.dev-head h2 { margin: 0; font-size: 26px; letter-spacing: -0.02em; }
+.dev-head p { margin: 0; color: var(--muted); max-width: 70ch; }
+.dev-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; align-items: stretch; }
+.dev-code-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.dev-code-card .code { margin: 0; overflow-x: auto; }
+.dev-code-label { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.dev-code-foot { margin: auto 0 0; font-size: 13px; color: var(--muted); }
+.dev-endpoints { list-style: none; margin: 0; padding: 0; }
+.dev-endpoints li { display: grid; grid-template-columns: minmax(260px, 380px) minmax(0, 1fr); gap: 20px; padding: 14px 20px; border-top: 1px solid var(--line); align-items: start; }
+.dev-endpoints li:first-child { border-top: 0; }
+.dev-ep-path { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
+.dev-ep-path code { overflow-wrap: anywhere; }
+.dev-checks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.dev-checks li { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.dev-checks code { align-self: flex-start; }
+.dev-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.dev-three .section-label { margin: 0 0 10px; }
+.dev-three .ticks { color: var(--ink-2); }
+@media (max-width: 1000px) { .dev-starts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dev-two, .dev-three { grid-template-columns: minmax(0, 1fr); } .dev-endpoints li { grid-template-columns: minmax(0, 1fr); gap: 6px; } }
+@media (max-width: 640px) { .dev-starts, .dev-checks { grid-template-columns: minmax(0, 1fr); } .dev { gap: 40px; } .dev-hero p { font-size: 16px; } }
+.card-night .dev-code-label { color: var(--night-muted); }
+.card-night .dev-code-foot a { color: #a9c1ff; }
