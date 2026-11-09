@@ -1007,6 +1007,8 @@ button.act:hover { background: var(--surface-2); }
 .explorer-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin: 4px 0 12px; }
 .explorer-q { width: min(280px, 100%); }
 .explorer-grid { height: 440px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+/* AG Studio's stylesheet (loaded on the same page) makes grid headers absolute, which hid the first rows under the header. */
+.explorer-grid .ag-header { position: relative; }
 .seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); }
 .seg-btn { border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); padding: 5px 12px; border-radius: 999px; cursor: pointer; }
 .seg-btn.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1); }
