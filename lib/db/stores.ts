@@ -1,3 +1,4 @@
+import { MemoryScheduleStore, type Schedule, type ScheduleStore } from "../schedule/store";
 import { MemoryAlertStore, type AlertChannels, type AlertStore } from "../alerts/channels";
 import { MemoryWalletStore, type WalletRecord, type WalletStore } from "../paypal/vault";
 import type { Ap2PurchaseRecord } from "../ap2v2/records";
@@ -73,6 +74,7 @@ export interface Stores {
   ledger: BudgetLedger;
   wallets: WalletStore;
   alerts: AlertStore;
+  schedules: ScheduleStore;
 }
 
 export function memoryStores(): Stores {
@@ -95,6 +97,7 @@ export function memoryStores(): Stores {
     passkeys: new MemoryPasskeyStore(),
     wallets: new MemoryWalletStore(),
     alerts: new MemoryAlertStore(),
+    schedules: new MemoryScheduleStore(),
   };
 }
 
@@ -446,6 +449,39 @@ class PgAlerts implements AlertStore {
   }
 }
 
+class PgSchedules implements ScheduleStore {
+  constructor(private db: PgDb) {}
+  async list(mandateId: string) {
+    return all(await this.db.q<Doc<Schedule>>(`SELECT data FROM schedules WHERE mandate_id = $1 ORDER BY data->>'createdAt'`, [mandateId]));
+  }
+  async get(id: string) {
+    return one(await this.db.q<Doc<Schedule>>(`SELECT data FROM schedules WHERE id = $1`, [id]));
+  }
+  async put(s: Schedule) {
+    await this.db.q(
+      `INSERT INTO schedules (id, mandate_id, next_run_at, data) VALUES ($1, $2, $3, $4::jsonb)
+       ON CONFLICT (id) DO UPDATE SET next_run_at = EXCLUDED.next_run_at, data = EXCLUDED.data`,
+      [s.id, s.mandateId, s.nextRunAt, toJson(s)],
+    );
+  }
+  async remove(id: string) {
+    return (await this.db.q(`DELETE FROM schedules WHERE id = $1 RETURNING id`, [id])).length > 0;
+  }
+  async due(now: Date, limit = 20) {
+    return all(
+      await this.db.q<Doc<Schedule>>(`SELECT data FROM schedules WHERE next_run_at <= $1 AND (data->>'active')::boolean ORDER BY next_run_at LIMIT $2`, [now.toISOString(), limit]),
+    );
+  }
+  async claim(id: string, expected: string, next: string | null) {
+    const rows = await this.db.q(
+      `UPDATE schedules SET next_run_at = $3, data = jsonb_set(data, '{nextRunAt}', COALESCE(to_jsonb($3::text), 'null'::jsonb))
+       WHERE id = $1 AND next_run_at = $2::timestamptz RETURNING id`,
+      [id, expected, next],
+    );
+    return rows.length > 0;
+  }
+}
+
 export function pgStores(db: PgDb): Stores {
   return {
     mandates: new PgMandates(db),
@@ -463,6 +499,7 @@ export function pgStores(db: PgDb): Stores {
     passkeys: new PgPasskeys(db),
     wallets: new PgWallets(db),
     alerts: new PgAlerts(db),
+    schedules: new PgSchedules(db),
     ledger: new PgLedger(db),
   };
 }

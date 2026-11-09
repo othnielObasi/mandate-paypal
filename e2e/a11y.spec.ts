@@ -4,8 +4,9 @@ import AxeBuilder from "@axe-core/playwright";
 const MANDATE = "Household basics, up to $80 a month, nothing over $25, verified sellers only";
 
 const found: string[] = [];
+// Third-party widgets (AG Grid, Bryntum Calendar) are excluded: their markup is theirs; everything around them is scanned.
 async function scan(page: Page, name: string) {
-  const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).exclude(".ag-root-wrapper").analyze();
+  const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).exclude(".ag-root-wrapper").exclude(".b-calendar").analyze();
   const summary = r.violations.map((v) => `${name}: ${v.id} (${v.impact}) ${v.help}\n    ${v.nodes.slice(0, 3).map((n) => n.target.join(" ")).join("\n    ")}`);
   found.push(...summary);
 }
@@ -38,6 +39,10 @@ test.describe("accessibility (axe, WCAG 2.1 AA)", () => {
         await expect(page.getByTestId("feed").locator("li").last()).toContainText(/Finished|couldn't find/);
       }
       await scan(page, "home");
+      await page.goto("/app/schedule");
+      await page.getByTestId("schedule-calendar").locator(".b-calendar").waitFor();
+      await scan(page, "schedule");
+      await page.goto("/app");
       await page.getByTestId("approval").getByRole("button", { name: "Details", exact: true }).click();
       await page.getByRole("dialog").waitFor();
       await scan(page, "approval sheet");

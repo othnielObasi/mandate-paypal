@@ -84,6 +84,8 @@ export async function runAgentTask(opts: {
   propose: ProposeFn;
   /** Reads web pages for the agent (a KERNEL cloud browser); omit to offer no web tool. */
   web?: PageReader | null;
+  /** Who started this run, if not the user in the chat (e.g. "Scheduled buy"). Shown on receipts. */
+  via?: string;
   maxSteps?: number;
   onEvent?: (e: AgentEvent) => void;
 }): Promise<AgentRun> {
@@ -94,7 +96,7 @@ export async function runAgentTask(opts: {
   const userWords = [...history.filter((t) => t.role === "user").map((t) => t.text), opts.task].join("\n");
   const earlierReplies = history.filter((t) => t.role === "agent").map((t) => t.text).join(" ");
   const earlierItems = [...new Set(history.flatMap((t) => t.skus ?? []))];
-  const session = new AgentSession({ task: userWords, earlierReplies, earlierItems, newestTask: opts.task, mandateId: opts.mandateId, catalog: opts.catalog, propose: opts.propose, web: opts.web });
+  const session = new AgentSession({ task: userWords, earlierReplies, earlierItems, newestTask: opts.task, mandateId: opts.mandateId, catalog: opts.catalog, propose: opts.propose, web: opts.web, ...(opts.via ? { via: opts.via } : {}) });
   const tools = session.tools();
   const events: AgentEvent[] = [];
   const emit = (e: AgentEvent) => {

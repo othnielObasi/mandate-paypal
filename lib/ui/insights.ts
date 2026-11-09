@@ -43,6 +43,9 @@ export interface Insights {
   payments: PaymentRow[];
 }
 
+/** The `via` label on purchases the agent makes on a schedule. */
+export const SCHEDULED = "Scheduled buy";
+
 const OUTCOME = { allow: "Allowed", approve: "Asked you", block: "Blocked" } as const;
 
 /** Plain-English names for the gate's rules. */
@@ -87,7 +90,7 @@ export function decisionRow(r: Receipt): DecisionRow | null {
     category: str(intent.category, "unknown"),
     merchant: str(intent.merchantId, "unknown"),
     amount: dollars(intent.amountMinor),
-    source: steered ? "A web or product page" : via ? `Outside assistant: ${via}` : "Mandate's agent",
+    source: steered ? "A web or product page" : via === SCHEDULED ? "Scheduled buy" : via ? `Outside assistant: ${via}` : "Mandate's agent",
   };
 }
 

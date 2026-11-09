@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
-import { Alert, Bell, Box, Chart, Check, Cross, Home, Mark, Pause, Plug, Receipt } from "../components/icons";
+import { Alert, Bell, Box, Calendar, Chart, Check, Cross, Home, Mark, Pause, Plug, Receipt } from "../components/icons";
 import { EVENT_TITLE, type AutomationEvent } from "@/lib/alerts/events";
 import { useNotifications } from "./notifications/useNotifications";
 import { useStore } from "./store";
@@ -11,7 +11,9 @@ import { useStore } from "./store";
 const NAV = [
   { href: "/app", label: "Home", icon: Home },
   { href: "/app/orders", label: "Orders", icon: Box },
-  { href: "/app/assistants", label: "Assistants", icon: Plug },
+  { href: "/app/schedule", label: "Schedule", icon: Calendar },
+  // Not in the phone tab bar (six tabs is the most that fit); Home links to it.
+  { href: "/app/assistants", label: "Assistants", icon: Plug, tab: false },
   { href: "/app/receipts", label: "Receipts", icon: Receipt },
   { href: "/app/insights", label: "Insights", icon: Chart },
   { href: "/app/notifications", label: "Notifications", short: "Alerts", icon: Bell },
@@ -233,7 +235,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {!setup && (
         <nav className="tabbar" aria-label="Main">
-          {NAV.map((n) => (
+          {NAV.filter((n) => !("tab" in n && n.tab === false)).map((n) => (
             <NextLink key={n.href} href={n.href} aria-current={current(n.href) ? "page" : undefined}>
               <n.icon size={22} />
               {"short" in n ? n.short : n.label}

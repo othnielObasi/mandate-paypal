@@ -34,6 +34,9 @@ import { PayPalAuth, PayPalWebhookVerifier } from "../paypal/webhook-verifier";
 import { ZapierHook } from "../automation/zapier";
 import { AlertRouter } from "../alerts/router";
 import { TelegramBot } from "../alerts/telegram";
+import { runAgentTask } from "../agent/runtime";
+import { ScheduleRunner } from "../schedule/runner";
+import { SCHEDULED } from "../ui/insights";
 import { KernelPageReader, OwnPagesReader, WebReader } from "../web/reader";
 import { RateLimiter } from "./rate-limit";
 import type { WebhookVerifier } from "./webhooks";
@@ -76,6 +79,8 @@ export interface Container {
   orderRecords: OrderRecords;
   /** Saves a buyer's PayPal wallet (PayPal Vault), so purchases inside the rules need no trip to PayPal. */
   vault: Vault;
+  /** Runs scheduled buys when they are due (and on "Run now"). */
+  scheduler: ScheduleRunner;
   /** Each workspace's own alert channels (Telegram, Slack, Discord, Zapier). */
   alerts: { router: AlertRouter; telegram: TelegramBot | null };
   /** Zapier: alerts out (ZAPIER_HOOK_URL), kill switch in (AUTOMATION_SECRET). */
@@ -251,6 +256,23 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     return llm ? new AnthropicClient({ apiKey: llm.apiKey, model: llm.model, endpoint: llm.endpoint, timeoutMs: llm.timeoutMs }) : new OfflinePlanner();
   };
 
+  // Scheduled buys: the agent runs as if asked in the chat, labelled "Scheduled buy" on every receipt.
+  const scheduler = new ScheduleRunner({
+    store: stores.schedules,
+    mandates,
+    run: async (s) => {
+      const r = await runAgentTask({ task: s.task, mandateId: s.mandateId, llm: newLlm(), catalog, propose: (p) => governor.propose(p), web, via: SCHEDULED });
+      const outcomes = r.events.flatMap((e) =>
+        e.kind === "tool" && e.name === "propose_purchase" && e.ok ? [String((e.result as { status?: string } | undefined)?.status ?? "unknown")] : [],
+      );
+      if (r.stoppedBy === "model_error") throw new Error(r.final);
+      return { final: r.final, outcomes };
+    },
+    onError: (e) => console.warn("Scheduled buy failed:", e instanceof Error ? e.message : e),
+  });
+  // Not in tests or during a build: they create containers too.
+  if (env.MANDATE_SCHEDULER !== "off" && !env.VITEST && env.NEXT_PHASE !== "phase-production-build") scheduler.start();
+
   const mcp: McpDeps = {
     connections: stores.connections,
     mandates,
@@ -291,6 +313,7 @@ export function createContainer(env: Env = process.env, opts: { sql?: Sql; webho
     appUrl,
     automation: { alerts, killSwitchSecret },
     alerts: { router: alertRouter, telegram },
+    scheduler,
     vault,
     orderRecords,
     web,

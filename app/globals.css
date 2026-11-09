@@ -988,3 +988,16 @@ button.act:hover { background: var(--surface-2); }
 @media (prefers-reduced-motion: no-preference) { .live-toast { animation: live-in .2s ease-out; } @keyframes live-in { from { opacity: 0; transform: translateY(8px); } } }
 .appbar-end .seller-link { white-space: nowrap; }
 @media (max-width: 1100px) and (min-width: 901px) { .appbar-end .env { display: none; } }
+
+/* Schedule: Bryntum Calendar beside the form and the list. */
+.sched-grid { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(280px, 1fr); gap: 20px; align-items: start; }
+.bry-wrap { height: 620px; border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; background: var(--surface); }
+.bry-wrap .b-calendar { height: 100%; }
+.sched-list { list-style: none; margin: 0; padding: 0; }
+.sched-item { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-top: 1px solid var(--hair); }
+.sched-item:first-child { border-top: 0; }
+.sched-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+@media (max-width: 1000px) { .sched-grid { grid-template-columns: minmax(0, 1fr); } .bry-wrap { height: 520px; } }
+.bry-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; list-style: none; margin: 0; padding: 0; font-size: 13px; color: var(--muted); }
+.bry-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.bry-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }

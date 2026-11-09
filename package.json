@@ -19,6 +19,8 @@
     "pretest": "npm --prefix sdks/typescript install --omit=dev --ignore-scripts --no-audit --no-fund --silent"
   },
   "dependencies": {
+    "@bryntum/calendar-community": "^8.0.0",
+    "@bryntum/calendar-react-community": "^8.0.0",
     "@fontsource/geist-mono": "^5.3.0",
     "@fontsource/geist-sans": "^5.3.0",
     "@noble/curves": "^1.8.1",

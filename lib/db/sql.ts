@@ -47,7 +47,10 @@ CREATE TABLE IF NOT EXISTS wallet_setups (
 CREATE TABLE IF NOT EXISTS alert_channels (
   user_id TEXT PRIMARY KEY, data JSONB NOT NULL);
 CREATE TABLE IF NOT EXISTS telegram_links (
-  code TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())
+  code TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS schedules (
+  id TEXT PRIMARY KEY, mandate_id TEXT NOT NULL, next_run_at TIMESTAMPTZ, data JSONB NOT NULL);
+CREATE INDEX IF NOT EXISTS schedules_due ON schedules (next_run_at) WHERE next_run_at IS NOT NULL
 `;
 
 /** Runs the idempotent schema once, then every query waits for it. */

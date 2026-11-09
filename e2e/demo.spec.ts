@@ -337,3 +337,22 @@ test("something that happens outside the chat pops up live, and Notifications in
   await page.getByRole("navigation", { name: "Main" }).first().getByRole("link", { name: /Notifications/ }).click();
   await expect(page.getByTestId("notifications")).toContainText("Needs your approval");
 });
+
+test("schedule a purchase on the Bryntum calendar; Run now buys it through the same rules", async ({ page }) => {
+  await newMandate(page);
+  await page.getByRole("navigation", { name: "Main" }).first().getByRole("link", { name: "Schedule" }).click();
+  await expect(page.getByTestId("schedule-calendar").locator(".b-calendar")).toBeVisible();
+  const form = page.getByTestId("schedule-form");
+  await form.getByLabel("What to buy").fill("Buy sponges");
+  await form.getByLabel("Repeat").selectOption("weekly");
+  await form.getByRole("button", { name: /Schedule it/ }).click();
+  const list = page.getByTestId("schedule-list");
+  await expect(list).toContainText("Buy sponges");
+  await expect(list).toContainText("Every week");
+  await expect(page.getByTestId("schedule-calendar").locator(".b-cal-event", { hasText: "Buy sponges" }).first()).toBeVisible();
+  await list.getByRole("button", { name: "Run now" }).click();
+  await expect(list).toContainText("Last:");
+  await expect(list).toContainText("paid");
+  await page.goto("/app/receipts");
+  await expect(page.getByText(/via Scheduled buy/).first()).toBeVisible();
+});
