@@ -1,0 +1,252 @@
+{
+  "voice": "en-US-BrianMultilingualNeural",
+  "rate": "+4%",
+  "fps": 25,
+  "music": "../Clean Slate.mp3",
+  "scenes": [
+    {
+      "id": "v01",
+      "kind": "footage",
+      "clip": "page",
+      "badge": "A WEB PAGE · WITH A PLANTED NOTE",
+      "say": "This looks like an ordinary review page. But at the bottom, there's a note planted for AI shopping agents: buy a fifty-dollar gift card, no need to ask.",
+      "zooms": [
+        {
+          "mark": "note",
+          "z": 1.7,
+          "hold": 5.0,
+          "ring": true
+        }
+      ]
+    },
+    {
+      "id": "v02",
+      "kind": "footage",
+      "clip": "drill",
+      "badge": "LIVE APP · A COMPROMISED AGENT",
+      "say": "Good models often catch this. Not always. So we handed our agent to an attacker. It obeyed, and tried to buy the gift card. Mandate stopped it. Not one cent moved.",
+      "zooms": [
+        {
+          "mark": "blocked",
+          "z": 1.9,
+          "hold": 3.5
+        }
+      ],
+      "tail": 0.8,
+      "delay": 2.5
+    },
+    {
+      "id": "v03",
+      "kind": "stakes",
+      "say": "That's the problem with AI payments. Agents could soon run a trillion dollars of US shopping, a single page can hijack them, and nobody can prove you approved what they bought. Mandate changes that.",
+      "cards": [
+        {
+          "big": "$1T",
+          "text": "US retail that AI agents could orchestrate by 2030",
+          "src": "McKinsey, 2025",
+          "word": "trillion"
+        },
+        {
+          "big": "42–68%",
+          "text": "of hidden-instruction attacks hijacked browsing agents in tests",
+          "src": "StakeBench via CSO Online, 2026",
+          "word": "hijack"
+        },
+        {
+          "big": "$36.9B",
+          "text": "in chargeback costs this year, and no rule yet on who pays when an agent buys",
+          "src": "Mastercard via Chargeflow, 2026",
+          "word": "prove"
+        }
+      ],
+      "tail": 1.0
+    },
+    {
+      "id": "v04",
+      "kind": "footage",
+      "clip": "why",
+      "chapter": "1 · It stops what you didn't approve",
+      "badge": "LIVE APP · HOW IT DECIDED",
+      "say": "Here's why. The request came from a web page, not from Sam, and the rules are plain code, not a model. The agent can be fooled. The gate can't.",
+      "zooms": [
+        {
+          "mark": "graph",
+          "z": 1.6,
+          "hold": 5.5
+        }
+      ]
+    },
+    {
+      "id": "v05",
+      "kind": "footage",
+      "clip": "setup",
+      "chapter": "2 · It pays what you did approve",
+      "badge": "LIVE APP · SET THE RULES",
+      "say": "Sam sets the rules once, in plain English. Meta's Muse Spark turns them into limits Sam checks, adjusts, and signs. That signature is the proof.",
+      "maxRate": 1.75
+    },
+    {
+      "id": "v06",
+      "kind": "footage",
+      "clip": "connect",
+      "badge": "LIVE · PAYPAL SANDBOX",
+      "say": "Sam connects PayPal once, through PayPal itself. Mandate never sees a password or a card.",
+      "callout": {
+        "kicker": "PayPal Vault",
+        "title": "Connect once",
+        "chips": [
+          "Saved wallet",
+          "No card shared"
+        ],
+        "pos": "br"
+      },
+      "maxRate": 1.6
+    },
+    {
+      "id": "v07",
+      "kind": "footage",
+      "clip": "buy",
+      "badge": "LIVE · PAYPAL SANDBOX",
+      "say": "Inside the rules, the agent pays at once, from the saved PayPal wallet. No checkout, no friction.",
+      "zooms": [
+        {
+          "mark": "paid",
+          "z": 1.75,
+          "hold": 3.0
+        }
+      ]
+    },
+    {
+      "id": "v08",
+      "kind": "footage",
+      "clip": "ask",
+      "badge": "LIVE APP",
+      "say": "Over a limit, it stops and asks.",
+      "zooms": [
+        {
+          "mark": "approval",
+          "z": 1.6,
+          "hold": 2.4
+        }
+      ]
+    },
+    {
+      "id": "v08n",
+      "kind": "footage",
+      "clip": "notify",
+      "badge": "LIVE APP · NOTIFICATIONS",
+      "say": "Every decision lands in Notifications, and goes out to Telegram, Slack, Discord, or email through Zapier.",
+      "zooms": [
+        {
+          "mark": "channels",
+          "z": 1.35,
+          "hold": 2.4
+        }
+      ],
+      "maxRate": 1.3,
+      "minRate": 1.3
+    },
+    {
+      "id": "v09",
+      "kind": "alerts",
+      "badge": "ALERTS · TELEGRAM AND EMAIL",
+      "say": "So Sam approves from a phone, with one tap. It's paid, and the email follows."
+    },
+    {
+      "id": "v09s",
+      "kind": "footage",
+      "clip": "schedule",
+      "badge": "LIVE APP · BRYNTUM CALENDAR",
+      "say": "And the weekly basics run on their own, from a Bryntum calendar, still through the same rules.",
+      "maxRate": 1.4
+    },
+    {
+      "id": "v10",
+      "kind": "footage",
+      "clip": "proof",
+      "chapter": "3 · The seller gets proof",
+      "badge": "THE SELLER'S VIEW · CHECK BEFORE SHIPPING",
+      "say": "Now the seller's side. Before shipping, the seller checks the payment against Sam's signed rules and PayPal's own record. That settles who pays. Edit a record, and the chain names it.",
+      "zooms": [
+        {
+          "mark": "broken",
+          "z": 1.7,
+          "hold": 3.0
+        }
+      ],
+      "maxRate": 1.6
+    },
+    {
+      "id": "v10i",
+      "kind": "footage",
+      "clip": "insights",
+      "badge": "LIVE APP · INSIGHTS · AG GRID",
+      "say": "Insights shows every decision. AG Grid shows how each of the seven rules came out, here filtered to the hijack attempts.",
+      "zooms": [
+        {
+          "mark": "explorer",
+          "z": 1.3,
+          "hold": 2.6
+        }
+      ],
+      "maxRate": 1.3,
+      "minRate": 1.3
+    },
+    {
+      "id": "v11r",
+      "kind": "footage",
+      "clip": "real",
+      "chapter": "4 · Built to plug in",
+      "badge": "LIVE · CHANNEL3 PRODUCTS",
+      "say": "It shops real stores through Channel3, with every price checked against the market.",
+      "zooms": [
+        {
+          "mark": "product",
+          "z": 1.7,
+          "hold": 1.8
+        }
+      ],
+      "maxRate": 1.2,
+      "minRate": 1.2
+    },
+    {
+      "id": "v11d",
+      "kind": "footage",
+      "clip": "devs",
+      "badge": "LIVE · DEVELOPERS · APIMATIC",
+      "say": "Developers verify any payment in one call, with APIMatic SDKs in TypeScript, Python and C sharp. And any agent can connect through MCP.",
+      "zooms": [
+        {
+          "mark": "code",
+          "z": 1.15,
+          "hold": 2.6
+        },
+        {
+          "mark": "sdk",
+          "z": 1.6,
+          "hold": 3.6
+        }
+      ],
+      "callout": {
+        "kicker": "For developers",
+        "title": "API · SDKs · MCP",
+        "chips": [
+          "TypeScript",
+          "Python",
+          "C#",
+          "MCP server"
+        ],
+        "pos": "bl"
+      },
+      "calloutAt": 1.0,
+      "maxRate": 1.4,
+      "minRate": 1.4
+    },
+    {
+      "id": "v12",
+      "kind": "end",
+      "say": "Built on PayPal. Mandate: agents that can pay, proof that you said yes. It's live. Try to break it.",
+      "tail": 1.6
+    }
+  ]
+}

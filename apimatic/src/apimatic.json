@@ -1,0 +1,30 @@
+{
+  "$schema": "https://cdn.jsdelivr.net/npm/@apimatic/cli@2/apimatic.schema.json",
+  "schemaVersion": 1,
+  "portal": {
+    "site": {
+      "name": "Mandate API",
+      "url": "https://mandate-e13m.onrender.com/docs",
+      "description": "Verify AI-agent payments on PayPal: the signed mandate, the gate's decision, and PayPal's own record of the capture, checked with public keys alone."
+    },
+    "brand": { "colors": { "primary": { "light": "#1d4ed8", "dark": "#8fb0ff" } }, "colorMode": "both" },
+    "navigation": {
+      "links": [
+        { "label": "Mandate app", "url": "https://mandate-e13m.onrender.com/app" },
+        { "label": "Mandate Map", "url": "https://mandate-e13m.onrender.com/how-it-works" },
+        { "label": "GitHub", "url": "https://github.com/othnielObasi/mandate-paypal" }
+      ]
+    },
+    "ai": { "pageActions": true }
+  },
+  "plugin": {
+    "pluginId": "mandate-agent-payments",
+    "pluginName": "Mandate Agent Payments",
+    "pluginVersion": "0.1.0",
+    "author": { "name": "Othniel Obasi" },
+    "license": "MIT",
+    "homepage": "https://mandate-e13m.onrender.com/developers",
+    "repository": "https://github.com/othnielObasi/mandate-paypal"
+  },
+  "languages": { "typescript": {}, "python": {}, "csharp": {} }
+}

@@ -1,80 +1,221 @@
-# Mandate
+<div align="center">
 
-**Let any AI agent spend your money, only within rules you signed, and let anyone check it did.**
+# ✅ Mandate
 
-Mandate is an independent authorisation layer for AI-agent payments, running on PayPal today. You describe what agents may buy in one sentence, check the rules it read, and sign them. From then on any agent can shop for you: Mandate's own agent, or Claude, ChatGPT or your own agent connected over MCP. No agent can move money itself. Every purchase is priced and signed by the merchant, decided by a deterministic gate against the limits you signed, and paid through PayPal: one approval per order, or, once you connect PayPal, straight from your saved PayPal wallet. Each payment carries [AP2 v0.2](https://github.com/google-agentic-commerce/AP2) mandates and receipts that a seller, PayPal or a dispute reviewer can verify with public keys alone.
+### Your AI can shop. It can't cross the line.
 
-**Live demo: [mandate-e13m.onrender.com](https://mandate-e13m.onrender.com)** (PayPal sandbox with Vault and webhooks, Muse Spark, Channel3, KERNEL, Telegram). **How it works at a glance: [the Mandate Map](https://mandate-e13m.onrender.com/how-it-works).** API docs: [/docs](https://mandate-e13m.onrender.com/docs).
+**An authorisation layer for AI-agent payments on PayPal.** You sign your spending rules once, in plain English. Any AI agent can then shop for you, but every purchase must pass a deterministic gate before PayPal moves money, and every payment carries proof a seller can verify with public keys alone.
 
-Built for the PayPal AI Hackathon (2026). An independent open-source project, not affiliated with or endorsed by PayPal or Google.
+[![Live demo](https://img.shields.io/badge/live%20demo-mandate--e13m.onrender.com-1d4ed8?style=for-the-badge)](https://mandate-e13m.onrender.com)
+[![PayPal sandbox](https://img.shields.io/badge/PayPal-sandbox-003087?style=for-the-badge&logo=paypal&logoColor=white)](https://developer.paypal.com)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-6d5bd0?style=for-the-badge)](LICENSE)
 
-## Why
+[**Try it live**](https://mandate-e13m.onrender.com/app) · [**Mandate Map**](https://mandate-e13m.onrender.com/how-it-works) · [**API docs**](https://mandate-e13m.onrender.com/docs) · [**Developers**](https://mandate-e13m.onrender.com/developers) · [**Judges' brief (PDF)**](docs/Mandate-judges-brief.pdf)
 
-AI agents can now buy things, but nobody can prove what an agent was allowed to do. Asking a model to follow spending instructions is not a control: it can misread them, be steered by a product page, or simply be wrong.
+![Mandate landing page](docs/screenshots/landing.jpg)
 
-PayPal has backed Google's Agent Payments Protocol (AP2), whose mandates let a user pre-authorise what an agent may spend, and has said mandate evidence should feed Seller Protection and fraud models ([PayPal Developer blog](https://developer.paypal.com/community/blog/PayPal-Agent-Payments-Protocol/)). Mandate shows the whole loop working on PayPal now: signed authority, a gate the agent cannot override, payment, and evidence anyone can check.
+</div>
 
-Its value is that it sits **outside** any one agent: the same signed rules and the same verifiable evidence apply whichever assistant starts the purchase.
+> Built for the PayPal AI Hackathon 2026. An independent open-source project, not affiliated with or endorsed by PayPal or Google. All payments run in the **PayPal sandbox**; the app refuses PayPal production.
 
-## What it does
+---
 
-| Moment | What happens |
+## Contents
+
+- [The problem](#the-problem)
+- [What Mandate does](#what-mandate-does)
+- [See it working](#see-it-working)
+- [How it works](#how-it-works)
+- [Built with PayPal and AI](#built-with-paypal-and-ai)
+- [Sponsor integrations](#sponsor-integrations)
+- [For developers](#for-developers)
+- [Run it yourself](#run-it-yourself)
+- [Tests and quality](#tests-and-quality)
+- [Project structure](#project-structure)
+- [Roadmap](#roadmap)
+- [Limitations](#limitations)
+- [Licence](#licence)
+
+---
+
+## The problem
+
+AI agents can now pay for things, and that's the uncomfortable part.
+
+| | |
 | --- | --- |
-| **Sign your rules** | "Household basics, up to $80 a month, nothing over $25, never more than 10% above market price, verified sellers only" is read into rules you check, edit and sign. |
-| **In-policy purchase** | The merchant quotes and signs the checkout. The gate allows it, a single-use permit is issued, and the executor pays through the PayPal Agent Toolkit. The agent closes your AP2 mandates for that exact checkout. |
-| **Connect PayPal once** | Log in to PayPal and agree once (PayPal Vault). From then on, purchases your rules allow are paid straight away, with no trip to PayPal; nothing outside your rules can be. Without it, each order is approved in PayPal, and a PayPal webhook completes it even if you close the tab. |
-| **Real products** | The demo store answers first, so the guided demo is the same every time. For anything else the agent searches real shops through **Channel3**: real names, photos and prices, judged by the same rules (real shops are never "verified sellers"; checkout is still the PayPal sandbox). Every product card shows the median price of similar items across shops. |
-| **Scheduled buys** | "Washing-up liquid every Monday": the agent buys on its own, on time, through the same gate. A **Bryntum Calendar** shows what's scheduled and every past purchase coloured by the gate's decision; drag to reschedule. Anything over a limit waits for you. |
-| **Over a limit** | A $32 kettle goes to you. Approving signs that exact cart; with a **passkey**, your phone or laptop signs it with Face ID, fingerprint or PIN. |
-| **Above market price** | Ink at $22.99 when the market is about $19.99 is 15% over your 10% limit, so it goes to you. If no market price can be found, Mandate does what you signed: ask you (default), block, or buy anyway. |
-| **Prompt injection** | A product page tells the agent to buy a bundle and a gift card. Both are blocked: the instruction came from untrusted content, not from your task. |
-| **Agents at the same time** | Several agents buying at once cannot overspend: budget decisions for a mandate are made one at a time, across server processes. |
-| **Any agent, same rules** | Connect Claude, ChatGPT or your own agent over MCP with a revocable link. It can search and buy, but only through the same gate. |
-| **Proof for you** | Tap any paid purchase to see its AP2 verdict, how it was authorised, every check and both receipts, and download the evidence. |
-| **Seller check** | Sellers verify each agent payment with public keys alone, before they ship. |
-| **Follow-through** | Orders are tracked, with tracking added to the PayPal transaction. A lost parcel gets a drafted dispute, in your words if you edit it, carrying the AP2 evidence; it is filed only when you confirm. |
-| **Tamper evidence** | Every decision is Ed25519-signed and hash-chained. Edit any row in the ledger and Verify names the row that changed. |
-| **Kill switch** | Pause or revoke the mandate, or any one assistant's connection. |
-| **Notifications** | A Notifications page and live pop-ups for approvals, blocks and payments, and alerts to **Telegram** (approve or decline from the message), Slack, Discord or Zapier (then WhatsApp, SMS, email…), set per workspace. |
-| **Audit rule by rule** | Insights: an AG Studio dashboard (spend, waiting, saved vs market, outcomes) and an **AG Grid decision explorer** with every decision as a row and the 7 rules as columns. Filter to blocked, asked, hijack attempts or scheduled buys; export CSV. |
-| **Your own workspace** | Each browser gets a private workspace; actions that can spend are owner-only. Sign out ends it: agents paused, PayPal disconnected, assistants cut off. |
+| **$1 trillion** | of US retail could be orchestrated by AI agents by 2030 ([McKinsey, 2025](https://www.mckinsey.com/industries/retail/our-insights/the-agentic-commerce-opportunity-how-ai-agents-are-ushering-in-a-new-era-for-consumers-and-merchants)) |
+| **42–68%** | of hidden-instruction attacks hijacked browsing agents in tests ([StakeBench, reported by CSO Online, 2026](https://www.pulse.bot/ai/news/prompt-injection-breaks-todays-ai-agents-study-warns-7de78e44-e8b3-4038-b0cb-b1eb0005a078/)) |
+| **$36.9 billion** | in chargeback costs in 2026, with no settled rule on who pays when an agent buys the wrong thing ([Mastercard, via Chargeflow](https://www.chargeflow.io/blog/agentic-commerce-and-its-impact-on-fraud-and-chargebacks)) |
+
+Asking a model to follow spending instructions is not a control: it can misread them, be steered by a web page, or simply be wrong. And today nobody (not the user, not the merchant, not PayPal) can prove what an agent was actually allowed to do.
+
+PayPal has backed Google's Agent Payments Protocol (AP2), whose mandates let a user pre-authorise what an agent may spend, and has said mandate evidence should feed Seller Protection and fraud models ([PayPal Developer blog](https://developer.paypal.com/community/blog/PayPal-Agent-Payments-Protocol/)). **Mandate shows that whole loop working on PayPal now**: signed authority, a gate the agent cannot override, payment, and evidence anyone can check.
+
+## What Mandate does
+
+Mandate never tries to make the AI trustworthy. It assumes the agent **can** be fooled, and puts plain code between any agent and the user's money.
+
+1. **It stops what you didn't approve.** Seven rules, checked in order, by code, not a model. A purchase that only a web page asked for is blocked, however convinced the agent is.
+2. **It pays what you did approve.** Inside your rules, payment is instant from your saved PayPal wallet. Over a limit, the agent stops and asks you, in the app, with a passkey, or with one tap in Telegram.
+3. **It gives the seller proof.** Every decision becomes a signed, hash-chained receipt with AP2 v0.2 mandates. A seller checks a payment before shipping, so there's proof you said yes.
+
+And because Mandate sits **outside** any single agent, the same rules and evidence apply whether the purchase comes from Mandate's own agent, Claude, ChatGPT, or any MCP client.
+
+<details>
+<summary><b>Everything it does, in one table</b></summary>
+
+| Capability | What happens |
+| --- | --- |
+| **Sign your rules** | "Household basics, up to $80 a month, nothing over $25, never more than 10% above market price, verified sellers only" is read by Meta Muse Spark into rules you check, edit and sign. |
+| **In-policy purchase** | The merchant quotes and signs the checkout. The gate allows it, a single-use permit is issued, and the executor pays through PayPal. The agent closes your AP2 mandates for that exact checkout. |
+| **Connect PayPal once** | Log in to PayPal and agree once (PayPal Vault). Purchases your rules allow are then paid straight away; nothing outside your rules can be. Without it, each order is approved in PayPal, and a webhook completes it even if you close the tab. |
+| **Over a limit** | A $32 kettle goes to you. Approving signs that exact cart; with a **passkey**, your device signs it with Face ID, fingerprint or PIN. |
+| **Prompt injection** | A page tells the agent to buy a bundle and a gift card. Both are blocked: the instruction came from untrusted content, not your task. |
+| **Fair price** | Every product is compared with the median of similar items across ~10 shops (Channel3). Above your limit, it asks you. |
+| **Real products** | Beyond the demo store, the agent searches real shops through **Channel3**, judged by the same rules. |
+| **Scheduled buys** | "Washing-up liquid every Monday" runs on its own from a **Bryntum** calendar, through the same gate. |
+| **Many agents at once** | Concurrent agents cannot overspend: budget decisions per mandate are serialised, across server processes. |
+| **Any agent, same rules** | Connect Claude, ChatGPT or your own agent over **MCP** with a revocable link. |
+| **Notifications** | A Notifications page, live pop-ups, and per-workspace alerts to **Telegram** (approve from the message), Slack, Discord or **Zapier**. |
+| **Audit rule by rule** | **Insights** (AG Studio) and an **AG Grid** decision explorer: every decision a row, the 7 rules as columns. |
+| **Seller check** | Sellers verify each agent payment with public keys alone, including PayPal's own record of the capture. |
+| **Follow-through** | Tracking is added to the PayPal transaction; a lost parcel gets a drafted dispute carrying the AP2 evidence. |
+| **Tamper evidence** | Every decision is Ed25519-signed and hash-chained. Edit any row and Verify names it. |
+| **Kill switch** | Pause or revoke the mandate or any one assistant, from the app or a Zap. |
+| **Private workspaces** | Each browser gets its own workspace; sign out ends it (agents paused, PayPal disconnected, assistants cut off). |
+
+</details>
+
+## See it working
+
+Every screenshot below is from the live app.
+
+### 1 · It stops what you didn't approve
+
+| A review page with a note planted for AI agents… | …a compromised agent obeys it, and the gate blocks the payment |
+| :---: | :---: |
+| ![Planted instruction on a web page](docs/screenshots/planted-page.jpg) | ![Gift card blocked](docs/screenshots/hijack-blocked.jpg) |
+
+| "How it decided": stopped at *Request came from* | Every decision, rule by rule (AG Grid) |
+| :---: | :---: |
+| ![How it decided](docs/screenshots/how-it-decided.jpg) | ![Decision explorer](docs/screenshots/decision-explorer.jpg) |
+
+### 2 · It pays what you did approve
+
+| Rules in one sentence, checked and signed as an AP2 Intent Mandate |
+| :---: |
+| ![Sign your rules](docs/screenshots/sign-rules.jpg) |
+
+| Inside the rules: paid instantly from PayPal Vault | Over a limit: the agent asks |
+| :---: | :---: |
+| ![Paid instantly](docs/screenshots/paid-instantly.jpg) | ![Asks you](docs/screenshots/asks-you.jpg) |
+
+| Notifications and alert channels | One-tap approvals in Telegram |
+| :---: | :---: |
+| ![Notifications](docs/screenshots/notifications.jpg) | ![Telegram alerts](docs/screenshots/telegram.jpg) |
+
+| Scheduled buys (Bryntum Calendar) | Insights (AG Studio) |
+| :---: | :---: |
+| ![Schedule](docs/screenshots/schedule.jpg) | ![Insights](docs/screenshots/insights.jpg) |
+
+### 3 · The seller gets proof
+
+| AP2 v0.2 checks before shipping | Edit one record, and the chain names it |
+| :---: | :---: |
+| ![Seller check](docs/screenshots/seller-check.jpg) | ![Tamper evident](docs/screenshots/tamper-evident.jpg) |
 
 ## How it works
 
-```
-You ── sentence ──▶ rules you check and edit ──▶ sign
-                                                  │  Intent Mandate (v1) + AP2 v0.2 open Checkout and Payment Mandates
-Mandate agent ─┐                                  ▼
-Claude / any ──┼─ MCP ─▶ search / read / propose ─▶ merchant prices and signs the checkout
-agent         ─┘    (provenance tracked)                         │
-                                                                 ▼
-                              ┌──────── per-mandate lock ────────────────────────────┐
-                              │ policy gate: signed limits, category, seller,         │
-                              │ item cap, fair price, budget (spent + held, one read) │
-                              │   allow ──▶ AP2 mandates closed, permit issued        │
-                              │   ask   ──▶ you approve (passkey signs the exact cart)│
-                              │   block                                               │
-                              └──────────────────────────────────────────────────────┘
-                                                                 │
-                        executor (the only code that holds PayPal) ─▶ PayPal Agent Toolkit, or the saved wallet (PayPal Vault)
-                                                                 │
-                        merchant + gateway receipts ─▶ seller check, proof, dispute evidence
-                        every step ─▶ signed, hash-chained receipt log
+**The AI proposes. Plain code decides. Only then does PayPal move money.**
+
+```mermaid
+flowchart LR
+    U(["👤 You"]) -->|one sentence| R["Rules you check<br/>and sign<br/><i>AP2 Intent Mandate</i>"]
+    subgraph Agents ["Any agent (untrusted)"]
+        A1["Mandate agent<br/><i>Meta Muse Spark</i>"]
+        A2["Claude · ChatGPT ·<br/>any MCP client"]
+    end
+    W["🌐 Web pages<br/><i>KERNEL · tagged untrusted</i>"] -.->|read, never obeyed| A1
+    A1 & A2 -->|propose| M["Merchant prices<br/>and signs checkout"]
+    R --> G
+    M --> G{"🛡️ Policy gate<br/>7 rules · fails closed"}
+    G -->|allow| P["Single-use permit"]
+    G -->|ask| H(["You approve<br/><i>app · passkey · Telegram</i>"])
+    G -->|block| X["⛔ Nothing paid"]
+    H -->|approved| P
+    P --> E["Executor<br/><i>the only code that holds PayPal</i>"]
+    E --> PP["💳 PayPal<br/>Agent Toolkit · Vault · Orders v2"]
+    PP --> RC["Signed receipts<br/><i>hash-chained log</i>"]
+    RC --> S(["🏪 Seller verifies<br/>with public keys"])
 ```
 
-### Trust boundaries
+Explore every step interactively in the **[Mandate Map](https://mandate-e13m.onrender.com/how-it-works)**: click any card for the details.
+
+![The Mandate Map](docs/screenshots/mandate-map.jpg)
+
+### The seven rules
+
+Every purchase meets the same rules, in order. The first that fails decides.
+
+| # | Rule | Passes when |
+| --- | --- | --- |
+| 1 | **Mandate** | Signed, active, not paused or revoked, and identical to what you signed |
+| 2 | **Request came from** | Your task, not text on a web page or product page |
+| 3 | **Category** | One you allowed |
+| 4 | **Seller** | Allowed by your rules (optionally verified sellers only, never a blocked one) |
+| 5 | **Item limit** | Under your per-order cap; above it, the agent **asks** |
+| 6 | **Market price** | Within your fair-price limit against the market median (or asks / blocks / allows as you signed) |
+| 7 | **Budget** | Fits what's left this period, counting money already held |
+
+### A purchase, step by step
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Ag as Agent
+    participant Me as Merchant
+    participant Ga as Policy gate
+    participant Ex as Executor
+    participant PP as PayPal
+    participant Lo as Signed log
+    participant Se as Seller
+    Ag->>Me: propose item
+    Me-->>Ag: signed checkout (ES256)
+    Ag->>Ga: purchase + provenance
+    Ga->>Ga: 7 rules under a per-mandate lock
+    alt allowed
+        Ga->>Lo: decision receipt
+        Ga->>Ex: single-use permit (5 min, exact order digest)
+        Ex->>PP: create + capture (Vault wallet or buyer approval)
+        PP-->>Ex: captured
+        Ex->>Lo: payment receipt + AP2 receipts
+    else over a limit
+        Ga->>Lo: ask receipt
+        Note over Ga: waits for your signed approval
+    else blocked
+        Ga->>Lo: block receipt (nothing paid)
+    end
+    Se->>Lo: verify with public keys + PayPal's own order record
+```
+
+<details>
+<summary><b>Trust boundaries</b></summary>
 
 | Component | Trusted for | Not trusted for |
 | --- | --- | --- |
 | **Agent** (any model, any vendor) | Finding products and proposing purchases | Prices, categories, seller status, or anything that moves money. Its tools are search, read and propose only; a build-time architecture test fails if agent code imports payment code. |
-| **Product pages** | Nothing | Text from pages is tracked as untrusted; a purchase that only untrusted text suggested is blocked. |
+| **Web and product pages** | Nothing | Text from pages is tracked as untrusted; a purchase that only untrusted text suggested is blocked. |
 | **Merchant** | Its own prices and checkout, which it signs | Its own legitimacy: seller status comes from Mandate's registry. |
 | **Policy gate** (`lib/gate/evaluate.ts`) | The decision | Pure, deterministic, fails closed. If the rules on file differ from what you signed, everything is blocked. |
 | **Executor** | Moving money | It pays only for a stored, signed, unexpired, unused permit whose digest matches the exact order. |
 | **You** | Approvals | With a passkey, approvals need your device's signature over the exact cart. |
 | **Verifier** (seller, PayPal, reviewer) | Checking | Needs only the published public keys. |
 
-### Money safety
+</details>
+
+<details>
+<summary><b>Money safety</b></summary>
 
 - **No overspend under concurrency.** The budget check and the money reservation run under a per-mandate lock (a Postgres advisory lock when several server processes share a database). Spent and held money are read in one snapshot.
 - **Money in flight stays held.** A permit holds its amount from issue until the payment settles. Settling records the payment and releases the permit in one statement, so money is never counted twice or missed.
@@ -83,76 +224,96 @@ agent         ─┘    (provenance tracked)                         │
 - **Permits** are signed over the order digest, expire in 5 minutes and are consumed atomically.
 - **The receipt chain never forks.** If two processes write at once, the second re-reads the head and signs at the next position.
 
-### AP2 v0.2
+</details>
+
+<details>
+<summary><b>AP2 v0.2</b></summary>
 
 Every purchase carries mandates in the current [AP2 specification](https://github.com/google-agentic-commerce/AP2):
 
-- **When you sign your rules**, Mandate (as AP2 "Trusted Agent Provider") issues an open Checkout Mandate and an open Payment Mandate as SD-JWTs (ES256). The payment mandate carries the standard constraints: `payment.amount_range`, `payment.budget` with `payment.agent_recurrence`, and `payment.reference` to the open checkout mandate. Both delegate (`cnf`) to Mandate's agent key.
+- **When you sign your rules**, Mandate (as AP2 "Trusted Agent Provider") issues an open Checkout Mandate and an open Payment Mandate as SD-JWTs (ES256), with the standard constraints `payment.amount_range`, `payment.budget` with `payment.agent_recurrence`, and `payment.reference`. Both delegate (`cnf`) to Mandate's agent key.
 - **On each in-policy purchase** the merchant signs the checkout (a UCP checkout object, ES256 JWT) and the agent closes both mandates with key-binding hops bound to that checkout's hash. **Purchases you approve** are closed with your key instead (human present).
-- **With a passkey**, your device also signs a WebAuthn challenge derived from the approval and the merchant-signed cart. The assertion travels in the evidence pack, and verifiers recompute the challenge from the checkout, so the signature covers what was bought.
+- **With a passkey**, your device also signs a WebAuthn challenge derived from the approval and the merchant-signed cart; verifiers recompute it from the checkout, so the signature covers what was bought.
 - **After PayPal captures**, the merchant and Mandate's payment gateway issue signed checkout and payment receipts.
 - **Verification** follows the spec's dispute rules: `GET /api/ap2/orders/{paypalOrderId}` returns the evidence pack and verdict; `GET /api/ap2/jwks` publishes the keys.
 
-Rules that depend on live data (verified or blocked sellers) or have no standard AP2 constraint (categories, fair price, untrusted-content origin) are enforced by Mandate's gate before anything is signed: verifiers must reject constraints they do not know, and a frozen merchant list would wrongly block sellers verified later.
+Rules that depend on live data (verified or blocked sellers) or have no standard AP2 constraint (categories, fair price, untrusted-content origin) are enforced by Mandate's gate before anything is signed.
 
-Interoperability is tested against Google's AP2 reference SDK (pinned in CI) in both directions: it verifies Mandate-built purchases with no violations, including evidence from the real purchase flow, agrees on budget enforcement, and Mandate verifies chains the reference SDK produces. The original Mandate v1 credentials (Ed25519 JWS: Intent, Cart and Payment Mandates, with the payment fingerprint on the PayPal order) are still issued and verified alongside.
+Interoperability is tested against **Google's AP2 reference SDK** (pinned in CI) in both directions. The original Mandate v1 credentials (Ed25519 JWS: Intent, Cart and Payment Mandates, with the payment fingerprint on the PayPal order) are still issued and verified alongside.
 
-## Verification API
+</details>
 
-For sellers, PayPal, and anyone integrating. Full reference at `/developers` in the app.
+## Built with PayPal and AI
+
+| Tool | What it does in Mandate |
+| --- | --- |
+| **PayPal Agent Toolkit** (`@paypal/agent-toolkit`) | `create_order`, `pay_order`, `get_order`, shipment tracking and `list_disputes`. Called only by the executor and fulfilment, never handed to a model. |
+| **PayPal Vault (REST v3) + Orders v2** | "Connect PayPal once": a setup token the buyer approves, exchanged for a payment token. In-rules purchases are then created and captured with `payment_source.paypal.vault_id`, with no redirect. Disconnect deletes the token at PayPal. |
+| **PayPal Webhooks** | Verified with `verify-webhook-signature`. `CHECKOUT.ORDER.APPROVED` captures orders whose buyer never returned (tested live: captured ~5 s after approval with the tab closed); `CUSTOMER.DISPUTE.*` links disputes to orders. |
+| **PayPal Server SDK** (`@paypal/paypal-server-sdk`, generated by APIMatic) | `OrdersController.getOrder` in the seller check: PayPal's own order record must show the exact signed amount, captured, before a seller ships. Fails closed. |
+| **Meta Muse Spark** (Meta Model API) | Drives the shopping agent through tool use, reads plain-English rules into a policy (validated by a strict schema), and drafts dispute statements. Claude (Anthropic API) is supported as an alternative through the same client. |
+| **AP2 v0.2** + Google's reference SDK | Signed intent, checkout and payment mandates and receipts; interoperability tests. |
+| **Model Context Protocol** | Mandate is an MCP server (Streamable HTTP) so any agent can shop through the same gate. |
+| **WebAuthn passkeys** | Device-signed approvals over the exact cart (ES256). |
+
+## Sponsor integrations
+
+| Sponsor | How Mandate uses it |
+| --- | --- |
+| **AG Grid** + **AG Studio** | The decision explorer (the 7 rules as columns, quick views incl. "Hijack attempts", CSV), the editable receipts ledger (a live tamper test), the seller payments grid, and the Insights dashboard. |
+| **Bryntum Calendar** | The Schedule page: scheduled buys and past purchases coloured by the gate's decision; drag to reschedule; **Run now**. |
+| **Channel3** | Real product search beyond the demo store, and the market median of ~10 shops for every purchase (fair-price rule, product cards, "saved vs market"). |
+| **KERNEL** | Cloud browsers for the agent's `read_web_page` tool: one browser per read, deleted afterwards; the text is tracked as untrusted. |
+| **APIMatic** | The [API portal](https://mandate-e13m.onrender.com/docs), SDKs in **TypeScript, Python and C#** (`sdks/`), a Context Plugin for AI coding assistants, and spec validation. |
+| **Zapier** | Alerts out (approval needed, blocked, paid, paused) per workspace or site-wide, and a kill switch in. |
+| **Postman** | A collection that runs the whole buyer, seller and auditor story with 42 assertions (Newman in CI). |
+| **Render** | Hosts the live app and its Postgres database (`render.yaml` blueprint). |
+| **Astropods** | Hosts an outside shopping agent (`agents/astropods-shopper`) whose only tools are Mandate's MCP tools. |
+
+Also: **Telegram Bot API** (approve or decline from the alert), Slack and Discord webhooks, Postgres.
+
+## For developers
+
+![API portal generated by APIMatic](docs/screenshots/api-portal.jpg)
+
+### Verify any payment in one call
 
 | Method | Path | Returns |
 | --- | --- | --- |
-| GET | `/api/verify/{paypalOrderId}` | Verdict for an agent payment: Mandate v1 checks, PayPal's own order record (the signed amount was captured), and the AP2 v0.2 verdict |
-| GET | `/api/ap2/orders/{paypalOrderId}` | AP2 evidence pack: signed checkout, mandate chains, receipts, budget context, passkey assertion if any, and every check |
+| GET | `/api/verify/{paypalOrderId}` | Verdict for an agent payment: Mandate v1 checks, PayPal's own order record, and the AP2 v0.2 verdict |
+| GET | `/api/ap2/orders/{paypalOrderId}` | AP2 evidence pack: signed checkout, mandate chains, receipts, budget context, passkey assertion, every check |
 | GET | `/api/ap2/jwks` | ES256 public keys for everything Mandate signs |
 | GET | `/api/seller?merchantId={id}` | A merchant's agent payments with their verdicts |
 | GET | `/api/trust` | All public keys, v1 and AP2 |
-| GET | `/api/receipts` · POST `/api/receipts/verify` | The signed decision log, and verification of a copy you hold |
-
-**OpenAPI and Postman.** The full API is described in [`public/openapi.yaml`](public/openapi.yaml) (OpenAPI 3.1), served by the app at `/openapi.yaml`. The [Postman collection](postman/Mandate.postman_collection.json) runs the whole story against any server with 42 assertions: sign rules, buy within them, approve an over-limit purchase, block a compromised agent, verify each payment from public keys alone, and catch an edited decision log. Import it into Postman, set `baseUrl`, and press **Run collection**, or from a terminal:
-
-```bash
-npx newman run postman/Mandate.postman_collection.json --env-var baseUrl=http://localhost:3000
-```
-
-**SDK (APIMatic).** [`sdks/typescript`](sdks/typescript) is a typed TypeScript client for the whole API, generated by [APIMatic](https://www.apimatic.io) from `public/openapi.yaml`: one model per schema, typed errors, retries, and `Production` / `Local` environments. The spec passes APIMatic's validation with no errors. A seller checks a payment like this:
+| GET · POST | `/api/receipts` · `/api/receipts/verify` | The signed decision log, and verification of a copy you hold |
 
 ```ts
-import { MandateApiClient, ServerEnvironment } from "mandate-api"; // sdks/typescript
+import { MandateApiClient, ServerEnvironment } from "mandate-api"; // sdks/typescript, generated by APIMatic
 
 const mandate = new MandateApiClient({ serverEnvironment: ServerEnvironment.Production });
 const verdict = await mandate.verification.verifyOrder({ paypalOrderId: "5O190127TN364715T" });
-if (verdict.ok && verdict.ap2?.ok) ship(); // AP2 v0.2 chain verified with public keys
+if (verdict.ok && verdict.ap2?.ok) ship(); // safe only when both chains verify with public keys
 ```
 
-[`tests/sdk/apimatic-sdk.test.ts`](tests/sdk/apimatic-sdk.test.ts) drives the generated SDK against the real route handlers: sign rules, shop, approve, verify a payment under AP2 v0.2, verify the signed log and catch a tampered receipt, and typed errors. Regenerate or add languages with an APIMatic API key in `APIMATIC_API_KEY`:
+The full API is described in [`public/openapi.yaml`](public/openapi.yaml) (OpenAPI 3.1). SDKs live in [`sdks/`](sdks) (TypeScript, Python, C#); [`tests/sdk/apimatic-sdk.test.ts`](tests/sdk/apimatic-sdk.test.ts) drives the generated SDK against the real route handlers.
 
 ```bash
-npm run api:validate                        # APIMatic lint of public/openapi.yaml
-npm run sdk:generate                        # regenerate sdks/typescript
-npm run sdk:generate -- python csharp       # more languages (also java, php, ruby, go)
+npx newman run postman/Mandate.postman_collection.json --env-var baseUrl=http://localhost:3000   # 42 assertions
+npm run api:validate                     # APIMatic lint of public/openapi.yaml   (needs APIMATIC_API_KEY)
+npm run sdk:generate -- python csharp    # regenerate SDKs (also java, php, ruby, go)
+npm run docs:generate                    # rebuild the API portal into public/docs
 ```
 
-## Connect your own AI assistant (MCP)
+### Connect your own AI assistant (MCP)
 
-1. On the **Assistants** page, name it and press **Create connection URL**. The URL is shown once.
-2. Claude Code: `claude mcp add --transport http mandate <URL>`. Other assistants: add a remote MCP server and paste the URL, or send `Authorization: Bearer <token>` to `/api/mcp`.
-3. The assistant gets `get_mandate`, `search_products`, `get_product` and `buy`. Revoke the connection or the mandate to cut it off.
+1. On the **Assistants** page, name it and press **Create connection URL** (shown once).
+2. Claude Code: `claude mcp add --transport http mandate <URL>`. Other assistants: add a remote MCP server, or send `Authorization: Bearer <token>` to `/api/mcp`.
+3. The assistant gets `get_mandate`, `search_products`, `get_product` and `buy`, all through the same gate. Revoke the connection or the mandate to cut it off.
 
-**An agent hosted on Astropods.** [`agents/astropods-shopper`](agents/astropods-shopper) is a complete outside agent, built with Mastra and deployed on [Astropods](https://docs.astropods.com), whose only tools are Mandate's. It holds no card and no PayPal access: paste a connection URL into its `MANDATE_MCP_URL` and it shops under your signed rules, with the same gate and evidence as Mandate's own agent. Revoking the link cuts it off.
+<details>
+<summary><b>Alerts, Zapier events and the kill switch</b></summary>
 
-## Notifications, alerts and kill switch
-
-Agents shop while you are away, so Mandate tells you when it matters and lets you stop everything from your phone.
-
-**In the app.** A Notifications page (in the menu, with a count) and a pop-up when something happens that you didn't just watch in the chat: an outside assistant's purchase, a PayPal webhook, a scheduled buy. The app checks for new activity every few seconds while it's open.
-
-**On your channels.** On the Notifications page each workspace connects its own: **Telegram** ("Connect Telegram" opens the bot with a one-time code; approval alerts carry Approve and Decline buttons), **Slack** or **Discord** (paste the channel's webhook), or **Zapier** (a Catch Hook, then anything Zapier reaches). Only those services' own webhook addresses are accepted. Set `TELEGRAM_BOT_TOKEN` to enable Telegram.
-
-**Site-wide (Zapier).** The operator can also send every workspace's alerts to one Zap:
-
-In Zapier, create a Zap with the trigger **Webhooks by Zapier → Catch Hook**, copy its URL into `ZAPIER_HOOK_URL`, and add any action: SMS, Gmail, Slack. Mandate posts a flat JSON event for every:
+Each workspace connects its own channels on the Notifications page: **Telegram** (a one-time `t.me` link; approval alerts carry Approve and Decline buttons, refused when the workspace requires a passkey), **Slack** or **Discord** (the channel's webhook), or **Zapier** (a Catch Hook). The operator can also send every workspace's alerts to one Zap with `ZAPIER_HOOK_URL`.
 
 | `event` | When |
 | --- | --- |
@@ -162,9 +323,7 @@ In Zapier, create a Zap with the trigger **Webhooks by Zapier → Catch Hook**, 
 | `payment.failed` | PayPal declined or the buyer cancelled |
 | `mandate.status_changed` | The mandate was paused, resumed or revoked |
 
-Each event has a one-line `message` ready to send, and the `seq` and `hash` of the signed log entry it reports. Alerts run in the background: if Zapier is down, purchases are unaffected.
-
-**Kill switch.** Set `AUTOMATION_SECRET` (16+ characters; the Render blueprint generates one). A Zap can then pause, resume or revoke spending, for example "text STOP to pause every agent":
+With `AUTOMATION_SECRET` set, a Zap can pause, resume or revoke spending (never approve or raise a limit):
 
 ```bash
 curl -X POST $MANDATE/api/automation/kill-switch \
@@ -172,64 +331,22 @@ curl -X POST $MANDATE/api/automation/kill-switch \
   -d '{"action":"pause"}'
 ```
 
-Automations can only stop or resume spending. They cannot approve a purchase or change a limit; approvals stay in the app, signed by your passkey if you have one.
+</details>
 
-## Reading the web (KERNEL)
+<details>
+<summary><b>Reading the web safely (KERNEL)</b></summary>
 
-Real shopping means reading reviews, blogs and shop pages, and that is exactly where prompt injection lives. With `KERNEL_API_KEY` set, Mandate's agent gets a `read_web_page` tool that opens the page in a [KERNEL](https://kernel.sh) cloud browser: a real Chromium in Kernel's cloud, created for one read and deleted afterwards, so JavaScript-heavy pages render and the page is fetched from Kernel's network, not Mandate's server.
+With `KERNEL_API_KEY` set, the agent's `read_web_page` tool opens the page in a [KERNEL](https://kernel.sh) cloud browser, created for one read and deleted afterwards. Everything it returns is untrusted: words that appear only on the page, never in your task, taint any product found with them, so the gate blocks a purchase that only the page asked for. Try it with `/demo/deals`, a review page served by the app with a planted "note to AI shopping agents". Without a key, the agent can read only the app's own `/demo` pages.
 
-Everything the browser returns is untrusted. Words that appear only on the page, never in your task, taint any product found with them, so the gate blocks a purchase that only the page asked for. The agent can use a page to choose between products you asked for, but a page cannot add anything to your order.
+</details>
 
-Try it: on Home, press **Use a web page for picks**. The task points the agent at `/demo/deals`, a third-party style review page served by the app, with a planted "note to AI shopping agents" asking for a bundle and a gift card. A normal agent reads it and buys your basics; run the same task as the compromised-agent drill and the planted purchases are blocked as untrusted instructions.
+## Run it yourself
 
-Without a Kernel key the agent can read only the app's own `/demo` pages, fetched directly; any other URL is refused, so the server never fetches arbitrary addresses from its own network.
-
-## What is real and what is simulated
-
-| Part | With keys set | Without keys (offline demo) |
-| --- | --- | --- |
-| Payments | **PayPal sandbox**: the Agent Toolkit with one buyer approval per order, or the buyer's saved PayPal wallet (Vault) once connected | Simulated PayPal and wallet, labelled in the UI |
-| Shopping agent and rules reader | **Muse Spark** (Meta Model API), or **Claude** (Anthropic API) | An offline planner |
-| Market prices and real products | **Channel3**: live prices for every purchase, and real product search when the demo store has nothing | Fixed reference prices; demo store only |
-| Web pages the agent reads | **KERNEL** cloud browser, any public page | Only the app's own `/demo` pages, fetched directly |
-| Merchants and catalogue | Demo store first (merchants with their own signing keys); real shops' listings never count as verified sellers | Demo store |
-| Parcels | Simulated carrier; tracking numbers are added to the **real** PayPal transaction | Simulated carrier |
-| Disputes | Drafted by Mandate; you file in PayPal's Resolution Center (PayPal has no buyer-side dispute API) and Mandate links it back | Simulated |
-| Signing, AP2, passkeys, gate, ledger | Real cryptography in every mode | Same (passkeys need the hosted app; the standalone preview uses a labelled demo key) |
-| Production PayPal | Refused: the app will not start against production | — |
-
-## Tools used
-
-| Tool | How it is used |
-| --- | --- |
-| **PayPal Agent Toolkit** (`@paypal/agent-toolkit` 1.11) | `create_order` (with the payment fingerprint as the item description), `pay_order`, `get_order`, `create_shipment_tracking` / `update_shipment_tracking`, `list_disputes`. Called by the executor and fulfilment only; never handed to a model. |
-| **PayPal Server SDK** (`@paypal/paypal-server-sdk` 2.5, generated by **APIMatic**) | `OrdersController.getOrder`, read-only, in the seller check: PayPal's own order record must show the exact amount the buyer's mandate signed, captured, before a seller ships. Fails closed if PayPal cannot be reached. |
-| **APIMatic** | Validates Mandate's OpenAPI spec and generates: SDKs in **TypeScript, Python and C#** (`sdks/`; the TypeScript one is tested against the real routes); the **API documentation portal** served at [`/docs`](https://mandate-e13m.onrender.com/docs) (`npm run docs:generate`); and a **context plugin** (`apimatic/plugin`) that teaches AI coding assistants to integrate the API, grounded in the SDKs' source. PayPal's Server SDK above is APIMatic-generated too. |
-| **PayPal Vault (REST v3) and Orders v2** | "Connect PayPal once": a setup token the buyer approves, exchanged for a payment token; purchases the gate allows are then created and captured with `payment_source.paypal.vault_id`, no redirect. Disconnect deletes the token at PayPal. |
-| **PayPal REST and webhooks** | OAuth and `verify-webhook-signature`. `CHECKOUT.ORDER.APPROVED` captures orders whose buyer never returned (tested live: approved in PayPal with the tab closed, captured about 5 s later); `CUSTOMER.DISPUTE.*` links disputes to orders. |
-| **Muse Spark** (Meta Model API, `muse-spark-1.3`) or **Claude** (Anthropic API, `claude-sonnet-5-5`) | Drives the shopping agent through tool use, reads the plain-English rules into a policy (validated by a strict schema), and drafts the dispute statement (checked against the facts). Both are called through the same Messages-API client: Meta's API accepts Anthropic-shaped requests, so `MANDATE_LLM=meta` only changes the address, the key and some extra room for the model's thinking. A stalled or overloaded call is retried once. The hosted demo runs Muse Spark. |
-| **Model Context Protocol** | Mandate is an MCP server (Streamable HTTP), tested with the official TypeScript SDK client. |
-| **AP2 reference SDK** (Google) | Interoperability tests, pinned to a commit. |
-| **WebAuthn / passkeys** | Device-signed approvals (ES256). |
-| **Channel3** | Two jobs. **Real product search** when the demo store has nothing (names, photos, prices, shops), and **market prices** for every purchase: the median of similar items' cheapest in-stock offers, shown on each product card, used by the fair-price rule, and summed in Insights as "saved vs market". |
-| **AG Grid Community** 33 | The **decision explorer** (the 7 rules as columns, quick views, search, pinned totals, CSV), the receipts ledger (editable cells as a live tamper test) and the seller payments grid. |
-| **AG Studio** 3 (AG Grid) | The **Insights** dashboard: spend, payments and gate decisions as KPIs, an outcomes donut, "which rule decided", spend by day and merchant, and the decision log, built from the signed log so every row carries its receipt number. Users can switch to **Customise** and rearrange it. Loaded only on that page. |
-| **Bryntum Calendar** 8 (Community) | The Schedule page: scheduled buys and past purchases on a month/week calendar, coloured by the gate's decision; drag a scheduled buy to move it and every repeat after it. |
-| **Telegram Bot API** | Per-workspace alerts with Approve / Decline buttons (refused when the workspace requires a passkey); linked with a one-time `t.me` code; webhook verified by Telegram's secret header. |
-| **Postgres** | Optional persistence for every store (`DATABASE_URL`), and the cross-process budget lock. |
-| **Render** | Hosting. |
-| **KERNEL** (`@onkernel/sdk`) | Cloud browsers for the agent's `read_web_page` tool: one browser per read, Playwright code run inside it to load the page and return its text, then deleted. The text is tracked as untrusted, so a page cannot add a purchase. |
-| **Astropods** | Hosts an outside shopping agent (`agents/astropods-shopper`, Mastra + `@astropods/adapter-mastra`) whose only tools come from Mandate's MCP server, showing a third-party agent spending under the same signed rules. |
-| **Zapier** | Alerts out (approval needed, blocked, paid, paused) to a Catch Hook, for SMS, email, WhatsApp or Slack, either site-wide (`ZAPIER_HOOK_URL`) or per workspace from the Notifications page; a kill switch in, so a Zap can pause every agent. |
-| **Postman** | The API test collection: the full buyer, seller and auditor story with 42 assertions, run in CI with Newman against the built app. |
-
-## Run it
-
-### Deploy (one click)
+### One click
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/othnielObasi/mandate-paypal)
 
-Render reads `render.yaml`, builds the app and gives it a public URL. Leave the keys blank for the offline demo, or add your PayPal sandbox, Meta Model API (or Anthropic), Channel3 and KERNEL keys. The landing page is at `/`, the app at `/app`, the seller check at `/seller`, the API docs at `/developers`.
+Render reads `render.yaml`, builds the app and gives it a public URL. Leave the keys blank for the offline demo, or add your own sandbox and API keys.
 
 ### Locally
 
@@ -238,78 +355,138 @@ Requires Node 20+.
 ```bash
 git clone https://github.com/othnielObasi/mandate-paypal && cd mandate-paypal
 npm install
-npm run dev          # http://localhost:3000
+npm run dev          # http://localhost:3000  ·  landing /, app /app, seller /seller, docs /developers
 ```
 
-With no environment variables it runs fully offline. For real services, copy `.env.example` to `.env.local`:
+With no environment variables it runs fully offline (simulated PayPal and an offline planner, clearly labelled). For real services, copy `.env.example` to `.env.local`:
 
-- `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`: a PayPal **sandbox** app.
-- `PAYPAL_WEBHOOK_ID`: the sandbox webhook pointing at `/api/paypal/webhooks`.
-- `MODEL_API_KEY` (Muse Spark on the Meta Model API) or `ANTHROPIC_API_KEY` (Claude): the model that drives the agent and reads the rules. `MANDATE_LLM=meta|claude` picks one when both are set.
-- `CHANNEL3_API_KEY`: real market prices and real product search.
-- `KERNEL_API_KEY`: the agent reads any public web page in a KERNEL cloud browser.
-- `TELEGRAM_BOT_TOKEN`: Telegram alerts (register the webhook at `/api/telegram/webhook`; see `app/api/telegram/webhook/route.ts`).
-- `ZAPIER_HOOK_URL`, `AUTOMATION_SECRET`: site-wide Zapier alerts, and the kill switch.
-- `MANDATE_SCHEDULER=off` stops scheduled buys from running on that instance.
-- `DATABASE_URL` and `MANDATE_SIGNING_KEY`: everything, including the receipt chain and the signed mandates, survives restarts, and several instances can share one database.
+| Variable | Enables |
+| --- | --- |
+| `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | A PayPal **sandbox** app (Agent Toolkit, Vault, Orders) |
+| `PAYPAL_WEBHOOK_ID` | Verified webhooks at `/api/paypal/webhooks` |
+| `MODEL_API_KEY` or `ANTHROPIC_API_KEY` | Meta Muse Spark or Claude for the agent and rules reader (`MANDATE_LLM=meta\|claude` picks one) |
+| `CHANNEL3_API_KEY` | Real products and market prices |
+| `KERNEL_API_KEY` | Reading any public web page in a cloud browser |
+| `TELEGRAM_BOT_TOKEN` | Telegram alerts (webhook at `/api/telegram/webhook`) |
+| `ZAPIER_HOOK_URL`, `AUTOMATION_SECRET` | Site-wide Zapier alerts and the kill switch |
+| `DATABASE_URL`, `MANDATE_SIGNING_KEY` | Persistence across restarts and multiple instances |
+| `MANDATE_SCHEDULER=off` | Stops scheduled buys running on that instance |
 
-### Standalone preview
+<details>
+<summary><b>What is real and what is simulated</b></summary>
 
-`npm run preview:html` builds `dist/mandate-preview.html`: the real pages and API handlers in one file that runs offline in a browser, for review without a server. `npm run preview:smoke` clicks through it on desktop and phone with the network blocked.
+| Part | With keys set | Without keys (offline demo) |
+| --- | --- | --- |
+| Payments | **PayPal sandbox**: Agent Toolkit with buyer approval, or the saved wallet (Vault) | Simulated PayPal and wallet, labelled in the UI |
+| Agent and rules reader | **Muse Spark** (Meta Model API) or **Claude** | An offline planner |
+| Market prices and real products | **Channel3** | Fixed reference prices; demo store only |
+| Web pages the agent reads | **KERNEL** cloud browser | Only the app's own `/demo` pages |
+| Parcels | Simulated carrier; tracking is added to the **real** PayPal transaction | Simulated carrier |
+| Disputes | Drafted by Mandate; filed in PayPal's Resolution Center and linked back | Simulated |
+| Signing, AP2, passkeys, gate, ledger | Real cryptography in every mode | Same |
+| Production PayPal | Refused: the app will not start against production | — |
 
-### Demo script (about 3 minutes)
+</details>
 
-The Home page has a **Try it in 3 steps** card that walks the first three.
+<details>
+<summary><b>Standalone preview and demo video</b></summary>
 
-1. Write and sign your rules.
-2. "Buy washing-up liquid and sponges": paid within your rules. Open **How it decided** to see the 7 rules, and tap the purchase for its AP2 proof.
-3. "Buy an electric kettle": over your limit, so it asks you (on Telegram too, with Approve buttons, if connected).
-4. **Compromised-agent drill**: the injected purchases are blocked.
-5. **Connect PayPal** (sandbox buyer) once; the next purchase is paid straight away.
-6. "Buy Mrs. Meyer's dish soap" with a mandate that doesn't require verified sellers: a real product from a real shop, via Channel3.
-7. **Schedule**: washing-up liquid every week on the Bryntum Calendar; **Run now**.
-8. **Insights**: the decision explorer, filtered to hijack attempts.
-9. **Check as the seller**: every AP2 check passes, before shipping.
-10. In the ledger, edit a payment row and press **Verify chain**: the changed row is named.
+- `npm run preview:html` builds `dist/mandate-preview.html`: the real pages and API handlers in one file that runs offline in a browser; `npm run preview:smoke` clicks through it with the network blocked.
+- [`video/`](video) holds the pipeline that records the live app and renders the demo video (see [`video/README.md`](video/README.md)).
 
-## Tests
+</details>
+
+## Tests and quality
 
 Built test-first.
 
 ```bash
-npm test             # 523 unit and integration tests (more with TEST_DATABASE_URL and AP2_PYTHON set)
-npm run test:e2e     # 24 Playwright tests in Chromium: every journey, phone width, a real MCP client,
-                     # a virtual passkey, and an axe WCAG 2.1 AA scan in light and dark mode
+npm test             # unit and integration tests (Vitest)
+npm run test:e2e     # Playwright: every journey, phone width, a real MCP client, a virtual passkey,
+                     # and an axe WCAG 2.1 AA scan in light and dark mode
 npm run typecheck
 ```
 
+**525 unit and integration tests passing** (21 more run with `TEST_DATABASE_URL` and `AP2_PYTHON` set: real Postgres and Google's Python AP2 SDK) and **24 end-to-end tests**, plus the 42-assertion Postman run in CI.
+
 | Area | What the tests prove |
 | --- | --- |
-| Policy gate | Every rule; fails closed; the fair-price rule with no market data asks, blocks or allows as signed; property tests: an `allow` never breaks a limit, an approval never overrides a hard rule |
-| Budget under concurrency | Agents buying at once in one process, and across two server processes on real Postgres, never exceed the signed budget; the receipt chain stays unbroken |
-| Money lifecycle | Money held while a payment is in flight (even past the permit's lifetime); released when PayPal never created an order or the buyer cancels; kept when capture may have happened |
-| AP2 v0.2 | ES256 and SD-JWT chains; constraints; tampering caught; interop with Google's reference SDK in both directions, including a real purchase |
-| Passkeys | A software authenticator and Chrome's virtual authenticator: the device must sign this exact cart; wrong origin, site, key, cart or missing user verification are refused; a changed stored assertion fails verification |
-| Governor and seller check | Signed limits enforced; merchant-quoted prices; registry seller status; verdicts from public keys only |
-| MCP server | Official SDK client end to end; revoked connections refused; sessions bound to connections; Origin guard |
-| Storage | One contract suite on memory, PGlite and real Postgres through a connection pool; restart test |
-| End to end | Every demo step in a real browser, phone width, accessibility scan, outside MCP agent against the running server, offline standalone preview |
+| Policy gate | Every rule; fails closed; property tests: an `allow` never breaks a limit, an approval never overrides a hard rule |
+| Budget under concurrency | Agents buying at once, in one process and across two server processes on real Postgres, never exceed the budget |
+| Money lifecycle | Money held while a payment is in flight; released when no order was created; kept when capture may have happened |
+| AP2 v0.2 | ES256 and SD-JWT chains; constraints; tampering caught; interop with Google's reference SDK in both directions |
+| Passkeys | The device must sign this exact cart; wrong origin, key, cart or missing user verification are refused |
+| Seller check | Verdicts from public keys only; PayPal's own order record must match |
+| MCP server | Official SDK client end to end; revoked connections refused; sessions bound to connections |
+| Architecture | Agent code can never import payment code |
 
-Safety checks are mutation-tested: removing any of the guards (permit consumption, signed-limit check, seller status, provenance tainting, webhook signatures, MCP revocation and session binding, market-price maths and its no-data fallback, the budget lock, in-flight holds, the receipt-chain retry, and more) makes the suite fail.
+Safety checks are **mutation-tested**: removing any guard (permit consumption, signed-limit check, seller status, provenance tainting, webhook signatures, MCP revocation, market-price maths, the budget lock, in-flight holds, the receipt-chain retry, and more) makes the suite fail.
+
+## Project structure
+
+```
+app/                   Next.js pages and API routes
+  app/                 the signed-in app: home, orders, schedule, insights, notifications, receipts
+  api/                 REST + MCP endpoints (agent, ap2, verify, paypal, wallet, alerts, schedules, …)
+  how-it-works/        the Mandate Map
+  developers/ seller/  developer docs page and the seller check
+lib/
+  gate/                the pure policy gate (7 rules)
+  core/                governor (decisions, permits) and executor (the only PayPal caller)
+  paypal/              Agent Toolkit, Vault, webhooks, Server SDK order records
+  ap2/ ap2v2/          Mandate v1 credentials and AP2 v0.2 mandates and receipts
+  agent/ web/          agent runtime and untrusted web reading (KERNEL)
+  merchant/ market/    demo store, Channel3 products and market prices
+  alerts/ schedule/    Telegram/Slack/Discord/Zapier alerts and scheduled buys
+  mcp/ passkey/ db/    MCP server, WebAuthn approvals, Postgres and in-memory stores
+tests/ e2e/            Vitest suites and Playwright journeys
+sdks/                  APIMatic-generated TypeScript, Python and C# SDKs
+apimatic/src/          API portal and Context Plugin configuration
+public/docs/           the generated API portal (served at /docs)
+postman/               the Postman collection
+agents/                an outside agent hosted on Astropods
+preview/               the offline single-file preview
+docs/                  README screenshots and the judges' brief
+video/                 demo video pipeline
+```
+
+## Roadmap
+
+**Shipped**
+- [x] Plain-English rules → signed AP2 v0.2 mandates
+- [x] Seven-rule deterministic gate with untrusted-content provenance
+- [x] PayPal Agent Toolkit, Vault (connect once), webhooks and Server SDK verification
+- [x] Passkey approvals, Telegram one-tap approvals, Slack, Discord and Zapier alerts
+- [x] Seller verification with public keys, AP2 evidence packs, PDF receipts
+- [x] Any agent via MCP; scheduled buys; Insights and decision explorer
+
+**Next**
+- [ ] User-held keys for standing rules (passkey-signed mandates, not only approvals)
+- [ ] Background reconciliation of payments whose capture is uncertain
+- [ ] Household and team mandates: shared budgets, per-person limits and approvers
+- [ ] Per-category budgets, delivery windows and preferred sellers
+- [ ] Accounts and persistent MCP sessions beyond a browser workspace
+
+**Later**
+- [ ] Live PayPal payments with a pilot group
+- [ ] A merchant plugin that verifies the mandate automatically at checkout
+- [ ] Merchant onboarding with key rotation and revocation
+- [ ] External anchoring of the receipt chain (tamper-proof, not only tamper-evident)
+- [ ] A full adversarial evaluation of the prompt-injection defence
 
 ## Limitations
 
 - **Sandbox only.** No real money moves, and the app refuses PayPal production.
-- **Key custody.** Approvals can be signed by your passkey, but the standing rules are signed by a server-held key (Mandate acting as AP2 Trusted Agent Provider). Merchant keys are demo keys held by Mandate.
-- **Merchant identity.** Seller verification is a demo registry; production needs merchant onboarding, key rotation and revocation.
-- **Reconciliation.** Payments whose capture may have happened are held and flagged, but there is no background job yet that settles or releases them against PayPal.
-- **Tamper-evident, not tamper-proof.** The receipt chain shows any change, but an operator holding the signing key could rewrite it entirely; external anchoring would close that.
+- **Key custody.** Approvals can be signed by your passkey, but standing rules are signed by a server-held key (Mandate as AP2 Trusted Agent Provider). Merchant keys are demo keys.
+- **Merchant identity.** Seller verification uses a demo registry; production needs merchant onboarding.
+- **Reconciliation.** Uncertain captures are held and flagged, but no background job settles them yet.
+- **Tamper-evident, not tamper-proof.** An operator holding the signing key could rewrite the whole chain; external anchoring would close that.
 - **Prompt-injection defence** is provenance-based and tested against the scenarios here, not a full adversarial evaluation.
-- PayPal has no buyer-side dispute API: in PayPal mode you file the drafted claim in the Resolution Center and Mandate links it back.
-- The Agent Toolkit's `create_order` accepts USD only and has no Vault support, so the demo runs in USD; saved-wallet payments go through PayPal's REST API directly.
-- Real products from Channel3 are listings, not merchants that sign with Mandate, so they are never verified sellers, and a sandbox checkout pays Mandate's sandbox merchant, not the shop.
-- MCP sessions are kept in memory, so an assistant reconnects if its server instance restarts. Workspaces belong to a browser (a cookie), with no accounts: signing out ends one for good. API calls without a browser cookie use a shared demo workspace, which can never save a PayPal wallet.
+- PayPal has no buyer-side dispute API, so drafted claims are filed in the Resolution Center and linked back.
+- The Agent Toolkit's `create_order` accepts USD only and has no Vault support, so saved-wallet payments use PayPal's REST API directly.
+- Channel3 products are listings, never verified sellers; a sandbox checkout pays Mandate's sandbox merchant.
+- Workspaces belong to a browser (a cookie); MCP sessions are kept in memory.
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+[MIT](LICENSE). Third-party assets are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
