@@ -13,7 +13,7 @@ const toB64url = (b: ArrayBuffer | Uint8Array) => {
 };
 const fromB64url = (s: string) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (s.length % 4)) % 4)), (c) => c.charCodeAt(0));
 
-/** Passkeys need a secure page that is not inside a sandboxed frame (the standalone preview falls back to a demo key). */
+/** Passkeys need a secure page that is not inside a sandboxed frame (elsewhere approvals fall back to a labelled demo key). */
 export function passkeysAvailable(): boolean {
   try {
     return typeof window !== "undefined" && window.isSecureContext && !!window.PublicKeyCredential && !!navigator.credentials && location.protocol !== "file:";

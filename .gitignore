@@ -6,26 +6,16 @@ node_modules/
 next-env.d.ts
 test-results/
 playwright-report/
-dist/
-preview/routes.generated.ts
 # APIMatic: config in apimatic/src is tracked; the generated plugin is downloadable from /docs
 /apimatic/plugin/
-# Written by the standalone-preview e2e run
-/mandate-preview.html
 # Secrets for Render (filled in by hand)
 /.env.render
 
-# Demo video build (sources in video/*.mjs|py; generated media stays local)
-video/assets/
-video/footage/
-video/frames/
-video/audio/
-video/out/
+# Demo video tooling (kept locally, not part of the product)
+/video/
 
 # Licensed music for the demo video (not redistributed)
 Clean Slate.mp3
-video/brief/brief.html
-video/script-v*.json
 
 # Local working files (reference clips, QA screenshots)
 /int.mp4

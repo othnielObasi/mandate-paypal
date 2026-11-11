@@ -393,14 +393,6 @@ With no environment variables it runs fully offline (simulated PayPal and an off
 
 </details>
 
-<details>
-<summary><b>Standalone preview and demo video</b></summary>
-
-- `npm run preview:html` builds `dist/mandate-preview.html`: the real pages and API handlers in one file that runs offline in a browser; `npm run preview:smoke` clicks through it with the network blocked.
-- [`video/`](video) holds the pipeline that records the live app and renders the demo video (see [`video/README.md`](video/README.md)).
-
-</details>
-
 ## Tests and quality
 
 Built test-first.
@@ -412,7 +404,7 @@ npm run test:e2e     # Playwright: every journey, phone width, a real MCP client
 npm run typecheck
 ```
 
-**525 unit and integration tests passing** (21 more run with `TEST_DATABASE_URL` and `AP2_PYTHON` set: real Postgres and Google's Python AP2 SDK) and **24 end-to-end tests**, plus the 42-assertion Postman run in CI.
+**519 unit and integration tests passing** (21 more run with `TEST_DATABASE_URL` and `AP2_PYTHON` set: real Postgres and Google's Python AP2 SDK) and **24 end-to-end tests**, plus the 42-assertion Postman run in CI.
 
 | Area | What the tests prove |
 | --- | --- |
@@ -450,9 +442,7 @@ apimatic/src/          API portal and Context Plugin configuration
 public/docs/           the generated API portal (served at /docs)
 postman/               the Postman collection
 agents/                an outside agent hosted on Astropods
-preview/               the offline single-file preview
 docs/                  README screenshots and the judges' brief
-video/                 demo video pipeline
 ```
 
 ## Roadmap
