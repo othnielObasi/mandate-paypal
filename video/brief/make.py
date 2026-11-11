@@ -87,6 +87,7 @@ td:first-child {{ font-weight: 600; color: var(--ink); white-space: nowrap; }}
   <div class="tag">Your AI can shop. <span>It can't cross the line.</span></div>
   <div class="essence"><b>AI agents can pay with PayPal safely</b>, because every payment is checked against rules the user signed, and the seller gets proof the user said yes.</div>
   <div class="links">
+    <b>Demo video</b><a href="https://www.youtube.com/watch?v=VOXk6WO7XgY">youtube.com/watch?v=VOXk6WO7XgY</a> <!-- 2:55 -->
     <b>Live demo</b><a href="https://mandate-e13m.onrender.com">mandate-e13m.onrender.com</a> <!-- PayPal sandbox -->
     <b>Code (MIT)</b><a href="https://github.com/othnielObasi/mandate-paypal">github.com/othnielObasi/mandate-paypal</a>
     <b>API docs</b><a href="https://mandate-e13m.onrender.com/docs">mandate-e13m.onrender.com/docs</a>

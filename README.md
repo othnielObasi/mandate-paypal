@@ -9,10 +9,13 @@
 [![Live demo](https://img.shields.io/badge/live%20demo-mandate--e13m.onrender.com-1d4ed8?style=for-the-badge)](https://mandate-e13m.onrender.com)
 [![PayPal sandbox](https://img.shields.io/badge/PayPal-sandbox-003087?style=for-the-badge&logo=paypal&logoColor=white)](https://developer.paypal.com)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-6d5bd0?style=for-the-badge)](LICENSE)
+[![Demo video](https://img.shields.io/badge/demo%20video-2%3A55-c4302b?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=VOXk6WO7XgY)
 
-[**Try it live**](https://mandate-e13m.onrender.com/app) · [**Mandate Map**](https://mandate-e13m.onrender.com/how-it-works) · [**API docs**](https://mandate-e13m.onrender.com/docs) · [**Developers**](https://mandate-e13m.onrender.com/developers) · [**Judges' brief (PDF)**](docs/Mandate-judges-brief.pdf)
+[**▶ Watch the demo**](https://www.youtube.com/watch?v=VOXk6WO7XgY) · [**Try it live**](https://mandate-e13m.onrender.com/app) · [**Mandate Map**](https://mandate-e13m.onrender.com/how-it-works) · [**API docs**](https://mandate-e13m.onrender.com/docs) · [**Developers**](https://mandate-e13m.onrender.com/developers) · [**Judges' brief (PDF)**](docs/Mandate-judges-brief.pdf)
 
-![Mandate landing page](docs/screenshots/landing.jpg)
+[![Watch the 3-minute demo on YouTube](https://img.youtube.com/vi/VOXk6WO7XgY/maxresdefault.jpg)](https://www.youtube.com/watch?v=VOXk6WO7XgY)
+
+<sub>▶ Click to watch the demo: a hijacked agent is stopped, an approved purchase is paid through PayPal, and the seller gets proof.</sub>
 
 </div>
 
@@ -90,6 +93,8 @@ And because Mandate sits **outside** any single agent, the same rules and eviden
 ## See it working
 
 Every screenshot below is from the live app.
+
+![Mandate landing page](docs/screenshots/landing.jpg)
 
 ### 1 · It stops what you didn't approve
 
